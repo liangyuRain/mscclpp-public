@@ -1,29 +1,29 @@
 # Setup on Lambda Machine
-- BBN's lambda machine has cuda 12.2. Thus, the base docker image under `msccl/docker` has to be changed to `FROM nvidia/cuda:12.2.0-devel-ubuntu20.04`. The following env variables are also required for docker image on lambda machine to have internet access:
+- BBN's lambda machine has cuda 12.2. Thus, the base docker image under `mscclpp-public/docker` has to be changed to `FROM nvidia/cuda:12.2.0-devel-ubuntu20.04`. The following env variables are also required for docker image on lambda machine to have internet access:
 ```docker
 ENV HTTP_PROXY="http://proxy.bbn.com:3128"
 ENV HTTPS_PROXY="http://proxy.bbn.com:3128"
 ENV http_proxy="http://proxy.bbn.com:3128"
 ENV https_proxy="http://proxy.bbn.com:3128"
 ```
-- Build an image called `mscclpp`: 
+- Build an image called `mscclpp-public`: 
 ```shell
-docker build -t mscclpp -f mscclpp/docker/base-cuda12.2.dockerfile .
+docker build -t mscclpp-public -f mscclpp-public/docker/base-cuda12.2.dockerfile .
 ```
-- Create a container named `mscclpp` using the image `mscclpp` we just built:
+- Create a container named `mscclpp-public` using the image `mscclpp-public` we just built:
 ```shell
 docker run --env HTTP_PROXY="http://proxy.bbn.com:3128" \
            --env HTTPS_PROXY="http://proxy.bbn.com:3128" \
            --env http_proxy="http://proxy.bbn.com:3128" \
-           --env https_proxy="http://proxy.bbn.com:3128" -d --name mscclpp --gpus all mscclpp tail -f /dev/null
+           --env https_proxy="http://proxy.bbn.com:3128" -d --name mscclpp-public --gpus all mscclpp-public tail -f /dev/null
 ```
-- Copy `mscclpp` into the container:
+- Copy `mscclpp-public` into the container:
 ```shell
-docker cp mscclpp/ mscclpp:/root/
+docker cp mscclpp-public/ mscclpp-public:/root/
 ```
 - Enter the container:
 ```shell
-docker exec -it mscclpp bash
+docker exec -it mscclpp-public bash
 ```
 - Install miniconda:
 ```shell
@@ -37,9 +37,9 @@ bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
 conda create --name mscclpp python=3.8
 conda activate mscclpp
 ```
-- The `cuda-python==12.1.0` and `cupy-cuda12x` in `mscclpp/python/test/requirements_cu12.txt` cannot be found by conda. Remove them and run:
+- The `cuda-python==12.1.0` and `cupy-cuda12x` in `mscclpp-public/python/test/requirements_cu12.txt` cannot be found by conda. Remove them and run:
 ```shell
-conda install --file mscclpp/python/test/requirements_cu12.txt -c conda-forge
+conda install --file mscclpp-public/python/test/requirements_cu12.txt -c conda-forge
 ```
 - Because cuda version is 12.2, we install `cuda-python==12.2.0` instead:
 ```shell
@@ -53,14 +53,14 @@ conda install networkx
 ```
 
 # Build msccl++
-- Remove, create, and move to `build` folder under `mscclpp`.
+- Remove, create, and move to `build` folder under `mscclpp-public`.
 - Run
 ```shell
 cmake -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make pylib-copy
 ```
-- Possibly also run `pip install .` under `mscclpp` folder.
+- Possibly also run `pip install .` under `mscclpp-public` folder.
 - Run `make pylib-copy` if encouter the following error:
 ```python
 _______________________ ERROR collecting test_mscclpp.py _______________________
@@ -77,14 +77,14 @@ E   ModuleNotFoundError: No module named 'mscclpp._mscclpp'
 ```
 
 # Run Pipeline Test
-- `cd` to `mscclpp/python` and run
+- `cd` to `mscclpp-public/python` and run
 ```shell
 mpirun --allow-run-as-root -np 8 pytest -s ./test/test_pipeline.py
 ```
 - Use `-k <test_prefix>` flag to run tests with the specified prefix only.
 
 # Run Pipeline Expt
-- `cd` to `mscclpp/python` and run
+- `cd` to `mscclpp-public/python` and run
 ```shell
 mpirun --allow-run-as-root -np 8 python -m test.pipeline_expt
 ```
@@ -92,9 +92,9 @@ mpirun --allow-run-as-root -np 8 python -m test.pipeline_expt
 # Run mscclpp tests
 - Run
 ```shell
-mpirun --allow-run-as-root -np 2 /root/mscclpp/build/test/mscclpp-test/allgather_test_perf -b 192M -e 3G -f 2 -n 100 -w 10 -c 0 -k 4
+mpirun --allow-run-as-root -np 2 /root/mscclpp-public/build/test/mscclpp-test/allgather_test_perf -b 192M -e 3G -f 2 -n 100 -w 10 -c 0 -k 4
 ```
-- If no ib device is avaiable, modify `mscclpp/test/mscclpp-test/common.cc`. Change
+- If no ib device is avaiable, modify `mscclpp-public/test/mscclpp-test/common.cc`. Change
 ```c++
 const mscclpp::TransportFlags allTransports = mscclpp::Transport::CudaIpc | IBs[args_.gpuNum];
 ```
