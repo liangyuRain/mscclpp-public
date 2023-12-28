@@ -8,7 +8,7 @@ ENV https_proxy="http://proxy.bbn.com:3128"
 ```
 - Build an image called `mscclpp-public`: 
 ```shell
-docker build -t mscclpp-public -f mscclpp-public/docker/base-cuda12.2.dockerfile .
+docker build -t mscclpp-public -f mscclpp-public/docker/base-x-cuda12.2.dockerfile .
 ```
 - Create a container named `mscclpp-public` using the image `mscclpp-public` we just built:
 ```shell
@@ -39,7 +39,7 @@ conda activate mscclpp
 ```
 - The `cuda-python==12.1.0` and `cupy-cuda12x` in `mscclpp-public/python/test/requirements_cu12.txt` cannot be found by conda. Remove them and run:
 ```shell
-conda install --file mscclpp-public/python/test/requirements_cu12.txt -c conda-forge
+conda install --file mscclpp-public/python/requirements_cu12.txt -c conda-forge
 ```
 - Because cuda version is 12.2, we install `cuda-python==12.2.0` instead:
 ```shell
@@ -47,8 +47,7 @@ pip install cuda-python==12.2.0
 ```
 - Other necessary packages:
 ```shell
-pip install cupy-cuda12x
-pip install cmake==3.25.0
+pip install cupy-cuda12x cmake==3.25.0
 conda install networkx
 ```
 
@@ -79,20 +78,20 @@ E   ModuleNotFoundError: No module named 'mscclpp._mscclpp'
 # Run Pipeline Test
 - `cd` to `mscclpp-public/python` and run
 ```shell
-mpirun --allow-run-as-root -np 8 pytest -s ./test/test_pipeline.py
+mpirun -np 8 pytest -s ./test/test_pipeline.py
 ```
 - Use `-k <test_prefix>` flag to run tests with the specified prefix only.
 
 # Run Pipeline Expt
 - `cd` to `mscclpp-public/python` and run
 ```shell
-mpirun --allow-run-as-root -np 8 python -m test.pipeline_expt
+mpirun -np 8 python -m test.pipeline_expt
 ```
 
 # Run mscclpp tests
 - Run
 ```shell
-mpirun --allow-run-as-root -np 2 /root/mscclpp-public/build/test/mscclpp-test/allgather_test_perf -b 192M -e 3G -f 2 -n 100 -w 10 -c 0 -k 4
+mpirun -np 2 /root/mscclpp-public/build/test/mscclpp-test/allgather_test_perf -b 192M -e 3G -f 2 -n 100 -w 10 -c 0 -k 4
 ```
 - If no ib device is avaiable, modify `mscclpp-public/test/mscclpp-test/common.cc`. Change
 ```c++
@@ -103,3 +102,9 @@ to
 const mscclpp::TransportFlags allTransports = mscclpp::Transport::CudaIpc;
 ```
 **There are three positions in the file where such flags exist.**
+
+# Notes
+- If report compile error for `#include <mscclpp/sm_channel_device.hpp>` not found, check if the `include_dir` in `KernelBuilder` from `mscclpp-public/python/mscclpp/utils.py` is as following:
+```python
+include_dir = os.path.join(self._current_file_dir, "../../include")
+```
