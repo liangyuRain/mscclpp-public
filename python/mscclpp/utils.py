@@ -138,6 +138,7 @@ def pack(*args):
     res = b""
     for arg in list(args):
         if isinstance(arg, int):
+            assert -(2 ** 31 - 1) <= arg <= 2 ** 31 - 1, f"arg={arg} overflow int"
             res += struct.pack("i", arg)
         elif isinstance(arg, ctypes.c_size_t):
             res += struct.pack("N", arg.value)

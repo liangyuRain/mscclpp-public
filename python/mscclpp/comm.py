@@ -130,6 +130,10 @@ class CommGroup:
             channels[rank] = SmChannel(semaphores[rank], registered_memories[rank], tensor.data.ptr)
         return channels
 
+    def make_sm_channel(self, tensor: cp.ndarray, connection: Connection, rank: int) -> SmChannel:
+        connections = {rank: connection}
+        return self.make_sm_channels(tensor, connections)[rank]
+
     def make_sm_channels_with_scratch(
         self, tensor: cp.ndarray, scratchTensor: cp.ndarray, connections: dict[int, Connection]
     ) -> dict[int, SmChannel]:

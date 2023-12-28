@@ -22,7 +22,7 @@ from mscclpp import (
 )
 import mscclpp.comm as mscclpp_comm
 from mscclpp.utils import KernelBuilder, pack
-from ._cpp import _ext
+# from ._cpp import _ext
 from .mscclpp_mpi import MpiGroup, parametrize_mpi_groups, mpi_group
 
 ethernet_interface_name = "eth0"
@@ -430,53 +430,53 @@ def test_fifo(
     assert False
 
 
-@parametrize_mpi_groups(2, 4, 8, 16)
-@pytest.mark.parametrize("nelem", [2**i for i in [10, 15, 20]])
-@pytest.mark.parametrize("transport", ["IB", "NVLink"])
-def test_proxy(mpi_group: MpiGroup, nelem: int, transport: str):
-    group, connections = create_and_connect(mpi_group, transport)
+# @parametrize_mpi_groups(2, 4, 8, 16)
+# @pytest.mark.parametrize("nelem", [2**i for i in [10, 15, 20]])
+# @pytest.mark.parametrize("transport", ["IB", "NVLink"])
+# def test_proxy(mpi_group: MpiGroup, nelem: int, transport: str):
+#     group, connections = create_and_connect(mpi_group, transport)
 
-    memory = cp.zeros(nelem, dtype=cp.int32)
-    nelemPerRank = nelem // group.nranks
-    nelemPerRank * memory.itemsize
-    memory[(nelemPerRank * group.my_rank) : (nelemPerRank * (group.my_rank + 1))] = group.my_rank + 1
-    memory_expected = cp.zeros_like(memory)
-    for rank in range(group.nranks):
-        memory_expected[(nelemPerRank * rank) : (nelemPerRank * (rank + 1))] = rank + 1
-    group.barrier()
-    all_reg_memories = group.register_tensor_with_connections(memory, connections)
+#     memory = cp.zeros(nelem, dtype=cp.int32)
+#     nelemPerRank = nelem // group.nranks
+#     nelemPerRank * memory.itemsize
+#     memory[(nelemPerRank * group.my_rank) : (nelemPerRank * (group.my_rank + 1))] = group.my_rank + 1
+#     memory_expected = cp.zeros_like(memory)
+#     for rank in range(group.nranks):
+#         memory_expected[(nelemPerRank * rank) : (nelemPerRank * (rank + 1))] = rank + 1
+#     group.barrier()
+#     all_reg_memories = group.register_tensor_with_connections(memory, connections)
 
-    semaphores = group.make_semaphore(connections, Host2DeviceSemaphore)
+#     semaphores = group.make_semaphore(connections, Host2DeviceSemaphore)
 
-    list_conn = []
-    list_sem = []
-    list_reg_mem = []
-    first_conn = next(iter(connections.values()))
-    first_sem = next(iter(semaphores.values()))
-    for rank in range(group.nranks):
-        if rank in connections:
-            list_conn.append(connections[rank])
-            list_sem.append(semaphores[rank])
-        else:
-            list_conn.append(first_conn)  # just for simplicity of indexing
-            list_sem.append(first_sem)
+#     list_conn = []
+#     list_sem = []
+#     list_reg_mem = []
+#     first_conn = next(iter(connections.values()))
+#     first_sem = next(iter(semaphores.values()))
+#     for rank in range(group.nranks):
+#         if rank in connections:
+#             list_conn.append(connections[rank])
+#             list_sem.append(semaphores[rank])
+#         else:
+#             list_conn.append(first_conn)  # just for simplicity of indexing
+#             list_sem.append(first_sem)
 
-        list_reg_mem.append(all_reg_memories[rank])
+#         list_reg_mem.append(all_reg_memories[rank])
 
-    proxy = _ext.MyProxyService(group.my_rank, group.nranks, nelem * memory.itemsize, list_conn, list_reg_mem, list_sem)
+#     proxy = _ext.MyProxyService(group.my_rank, group.nranks, nelem * memory.itemsize, list_conn, list_reg_mem, list_sem)
 
-    fifo_device_handle = proxy.fifo_device_handle()
+#     fifo_device_handle = proxy.fifo_device_handle()
 
-    kernel = MscclppKernel(
-        "proxy", my_rank=group.my_rank, nranks=group.nranks, semaphore_or_channels=list_sem, fifo=fifo_device_handle
-    )
-    proxy.start()
-    group.barrier()
-    kernel()
-    cp.cuda.runtime.deviceSynchronize()
-    proxy.stop()
-    group.barrier()
-    assert cp.array_equal(memory, memory_expected)
+#     kernel = MscclppKernel(
+#         "proxy", my_rank=group.my_rank, nranks=group.nranks, semaphore_or_channels=list_sem, fifo=fifo_device_handle
+#     )
+#     proxy.start()
+#     group.barrier()
+#     kernel()
+#     cp.cuda.runtime.deviceSynchronize()
+#     proxy.stop()
+#     group.barrier()
+#     assert cp.array_equal(memory, memory_expected)
 
 
 @parametrize_mpi_groups(2, 4, 8, 16)

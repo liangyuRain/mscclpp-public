@@ -39,12 +39,23 @@ struct Host2DeviceSemaphoreDeviceHandle {
 /// Device-side handle for @ref SmDevice2DeviceSemaphore.
 struct SmDevice2DeviceSemaphoreDeviceHandle {
 #if defined(MSCCLPP_DEVICE_COMPILE)
-  /// Poll if the remote device has signaled.
-  /// @return true if the remote device has signaled.
-  MSCCLPP_DEVICE_INLINE bool poll() {
-    bool signaled = (atomicLoad(inboundSemaphoreId, memoryOrderAcquire) > (*expectedInboundSemaphoreId));
-    if (signaled) (*expectedInboundSemaphoreId) += 1;
-    return signaled;
+  // /// Poll if the remote device has signaled.
+  // /// @return true if the remote device has signaled.
+  // MSCCLPP_DEVICE_INLINE bool poll() {
+  //   bool signaled = (atomicLoad(inboundSemaphoreId, memoryOrderAcquire) > (*expectedInboundSemaphoreId));
+  //   if (signaled) (*expectedInboundSemaphoreId) += 1;
+  //   return signaled;
+  // }
+
+  MSCCLPP_DEVICE_INLINE uint64_t poll(const int64_t max_poll = 1) {
+    uint64_t count = (atomicLoad(inboundSemaphoreId, memoryOrderAcquire) - (*expectedInboundSemaphoreId));
+    if (max_poll <= 0 || count <= 0) {
+      return 0;
+    } else {
+      if (max_poll < count) count = max_poll;
+      *expectedInboundSemaphoreId += count;
+      return count;
+    }
   }
 
   /// Wait for the remote device to signal.
@@ -59,10 +70,10 @@ struct SmDevice2DeviceSemaphoreDeviceHandle {
   /// This function guarantees that all the memory operation before this function is completed before the remote
   /// semaphore is signaled.
   ///
-  MSCCLPP_DEVICE_INLINE void signal() {
+  MSCCLPP_DEVICE_INLINE void signal(const uint64_t count = 1) {
     // This fence ensures that preceding writes are visible on the peer GPU before the incremented
     // `outboundSemaphoreId` is visible.
-    semaphoreIncrement();
+    semaphoreIncrement(count);
     atomicStore(remoteInboundSemaphoreId, semaphoreGetLocal(), memoryOrderSeqCst);
   }
 
@@ -90,7 +101,7 @@ struct SmDevice2DeviceSemaphoreDeviceHandle {
   }
 
   /// Increase the counter of the local semaphore.
-  MSCCLPP_DEVICE_INLINE void semaphoreIncrement() { *outboundSemaphoreId += 1; }
+  MSCCLPP_DEVICE_INLINE void semaphoreIncrement(const uint64_t count = 1) { *outboundSemaphoreId += count; }
 
   /// Get the value of the local semaphore.
   MSCCLPP_DEVICE_INLINE uint64_t semaphoreGetLocal() const { return *outboundSemaphoreId; }
