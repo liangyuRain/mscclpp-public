@@ -103,6 +103,12 @@ class PipelineKernel:
         if len(send_handles_arr) == 0:
             send_handles_arr.append(bytes(len(recv_handles_arr[0])))
         
+        recv_handles_mem = cp.asarray(memoryview(b"".join(recv_handles_arr)), dtype=cp.uint8)
+        send_handles_mem = cp.asarray(memoryview(b"".join(send_handles_arr)), dtype=cp.uint8)
+        recv_scratches_mem = cp.asarray(memoryview(b"".join(recv_scratches_arr)), dtype=cp.uint8)
+        assert len(recv_handles_arr) > 0 or recv_handles_mem.data.ptr == 0
+        assert len(send_handles_arr) > 0 or send_handles_mem.data.ptr == 0
+        assert len(recv_scratches_arr) > 0 or recv_scratches_mem.data.ptr == 0
         block_recv_ch_starts = cp.array(block_recv_ch_starts, dtype=cp.int32)
         block_send_ch_starts = cp.array(block_send_ch_starts, dtype=cp.int32)
         nrecvs = cp.array(nrecvs, dtype=cp.int32)
@@ -120,7 +126,8 @@ class PipelineKernel:
         assert nelem_totals.shape[0] == nblocks
 
         self.params = b""
-        self.params += b"".join(recv_handles_arr) + b"".join(send_handles_arr) + b"".join(recv_scratches_arr)
+        self.params += struct.pack("P", recv_handles_mem.data.ptr) + struct.pack("P", send_handles_mem.data.ptr)
+        self.params += struct.pack("P", recv_scratches_mem.data.ptr)
         self.params += struct.pack("P", block_recv_ch_starts.data.ptr) + struct.pack("P", block_send_ch_starts.data.ptr)
         self.params += struct.pack("P", nrecvs.data.ptr) + struct.pack("P", nsends.data.ptr)
         self.params += struct.pack("P", node_types_arr.data.ptr)
@@ -129,7 +136,9 @@ class PipelineKernel:
         self.params += struct.pack("P", data.data.ptr)
 
         # keep references to avoid garbage collection
-        self._temp = [recv_channels, send_channels, data, recv_scratches, 
+        self._temp = [recv_channels, send_channels,
+                      recv_handles_mem, send_handles_mem,
+                      data, recv_scratches, recv_scratches_mem,
                       block_recv_ch_starts, block_send_ch_starts, nrecvs, nsends, 
                       node_types_arr, data_starts, nelem_totals]
 
@@ -155,8 +164,6 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
     chunk_starts = {}
     chunk_counts = {}
     for (u, i), C in sorted(Cs.items(), key=lambda x: x[0]):
-        if C == 1:
-            print("WARNING: weighted trees are not supported currently")
         if u not in chunk_counts:
             chunk_starts[u, i] = 0
             chunk_counts[u] = C
@@ -241,8 +248,6 @@ def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
     chunk_starts = {}
     chunk_counts = {}
     for (u, i), C in sorted(Cs.items(), key=lambda x: x[0]):
-        if C == 1:
-            print("WARNING: weighted trees are not supported currently")
         if u not in chunk_counts:
             chunk_starts[u, i] = 0
             chunk_counts[u] = C
