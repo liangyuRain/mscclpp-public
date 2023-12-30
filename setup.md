@@ -128,3 +128,44 @@ const mscclpp::TransportFlags allTransports = mscclpp::Transport::CudaIpc;
 ```python
 include_dir = os.path.join(self._current_file_dir, "../../include")
 ```
+- Currently, running official `xxxxxx_test_perf` has the following error:
+```shell
+  what():  Test CUDA failure: /root/mscclpp-public/test/mscclpp-test/common.cc:209 'too many resources requested for launch'
+```
+Originally, running `test_pipeline` also has this error. However, after fixing the argument passed as `Plist` instead of pointer to reduce the size of arguments to the kernel, `test_pipeline` can be run properly.
+- At this commit, if change `pipeline_expt` to take best result instead of averge, perfomance numbers for `pipeline_kernel.cu`:
+```shell
+######################### Allgather #########################
+k=8, nelem_per_send=1048576,
+check_iters=10, iters=50
+KERNEL_FILE=pipeline_kernel.cu
+
+             size(B)            time(us)         algbw(GB/s)
+          1073741824             4032.51              247.98
+
+######################### Allreduce #########################
+k=16, nelem_per_send=32768, scratch_size=4194304,
+check_iters=10, iters=50
+KERNEL_FILE=pipeline_kernel.cu
+
+             size(B)            time(us)         algbw(GB/s)
+          1073741824             9385.98              106.54
+```
+For `pipeline_kernel_simplified.cu`:
+```shell
+######################### Allgather #########################
+k=8, nelem_per_send=1048576,
+check_iters=10, iters=50
+KERNEL_FILE=pipeline_kernel_simplified.cu
+
+             size(B)            time(us)         algbw(GB/s)
+          1073741824             4032.51              247.98
+
+######################### Allreduce #########################
+k=16, nelem_per_send=32768, scratch_size=4194304,
+check_iters=10, iters=50
+KERNEL_FILE=pipeline_kernel_simplified.cu
+
+             size(B)            time(us)         algbw(GB/s)
+          1073741824            10135.55               98.66
+```
