@@ -166,7 +166,7 @@ class CommGroup:
 
     def make_proxy_channel(
         self, proxy_service: ProxyService, tensor: cp.ndarray, connection: Connection, rank: int
-    ) -> dict[int, SimpleProxyChannel]:
+    ) -> SimpleProxyChannel:
         connections = {rank: connection}
         return self.make_proxy_channels(proxy_service, tensor, connections)[rank]
 
