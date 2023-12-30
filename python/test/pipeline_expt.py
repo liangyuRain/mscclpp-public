@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 import mscclpp.comm as mscclpp_comm
-from .pipeline_schedule import allreduce_kernel, allgather_kernel, connect_nvlink, KERNEL_FILE
+from .pipeline_schedule import allreduce_kernel, allgather_kernel, connect_nvlink
 from .mscclpp_mpi import MpiGroup
 
 
