@@ -15,6 +15,24 @@ docker build -t mscclpp-public -f mscclpp-public/docker/base-x-cuda12.2.dockerfi
 docker run --env HTTP_PROXY="http://proxy.bbn.com:3128" \
            --env HTTPS_PROXY="http://proxy.bbn.com:3128" \
            --env http_proxy="http://proxy.bbn.com:3128" \
+           --env https_proxy="http://proxy.bbn.com:3128" -d --name mscclpp --gpus all mscclpp tail -f /dev/null
+```
+```shell
+docker run --ulimit memlock=-1:-1 \
+           --device=/dev/infiniband/uverbs0 \
+           --device=/dev/infiniband/uverbs1 \
+           --device=/dev/infiniband/uverbs2 \
+           --device=/dev/infiniband/uverbs3 \
+           --device=/dev/infiniband/uverbs4 \
+           --device=/dev/infiniband/uverbs5 \
+           --device=/dev/infiniband/uverbs6 \
+           --device=/dev/infiniband/uverbs7 \
+           --device=/dev/infiniband/uverbs8 \
+           --device=/dev/infiniband/uverbs9 \
+           --device=/dev/infiniband/rdma_cm \
+           --env HTTP_PROXY="http://proxy.bbn.com:3128" \
+           --env HTTPS_PROXY="http://proxy.bbn.com:3128" \
+           --env http_proxy="http://proxy.bbn.com:3128" \
            --env https_proxy="http://proxy.bbn.com:3128" -d --name mscclpp-public --gpus all mscclpp-public tail -f /dev/null
 ```
 - Copy `mscclpp-public` into the container:
@@ -104,6 +122,8 @@ const mscclpp::TransportFlags allTransports = mscclpp::Transport::CudaIpc;
 **There are three positions in the file where such flags exist.**
 
 # Notes
+- Error `ibv_create_cq(cqe=4096) failed: Cannot allocate memory` is caused by not setting `max locked memory` to `unlimited`. One can check by running `ulimit -a`. The solution is to add `--ulimit memlock=-1:-1` when `docker run`. There seems to be a discrepancy between host and docker container in `ulimit -a` by default.
+- Run `ib_send_bw -d mlx5_0 -i 1 -a -R --report_gbits` on both server and client sides to check IB bandwidth. (never successful yet on lambda)
 - If report compile error for `#include <mscclpp/sm_channel_device.hpp>` not found, check if the `include_dir` in `KernelBuilder` from `mscclpp-public/python/mscclpp/utils.py` is as following:
 ```python
 include_dir = os.path.join(self._current_file_dir, "../../include")
