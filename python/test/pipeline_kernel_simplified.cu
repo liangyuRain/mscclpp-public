@@ -33,7 +33,7 @@
 /// @param scratch_size Max num of elements in scratch buffer for each recv channel (ignore if not reduce).
 /// scratch_size must be greater than nelem_per_send
 /// @param data Data buffer.
-MSCCLPP_DEVICE_INLINE void 
+MSCCLPP_DEVICE_INLINE void
     threadblockCall(mscclpp::SmChannelDeviceHandle* recv_sm_channels, mscclpp::SmChannelDeviceHandle* send_sm_channels,
                     mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channels, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channels,
                     int** recv_scratches, const int nrecv_sm, const int nsend_sm, const int nrecv_proxy, const int nsend_proxy,
@@ -56,36 +56,39 @@ MSCCLPP_DEVICE_INLINE void
 
     const int max_pending_sends = scratch_size / nelem_per_send;
 
-    int rloop = nrecv_sm + nrecv_proxy > 0 ? 0 : nloops; // progress of recv
-    int sloop = nsend_sm + nsend_proxy > 0 ? 0 : nloops; // progress of send
-    while (rloop < nloops || sloop < nloops) {
-      if (rloop < nloops) {
-        // assert nrecv_sm + nrecv_proxy > 0
-        for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
-          const int ready_loop = ready[i];
-          // if (ready_loop < rloop + 1) ready[i] += (i < nrecv_sm ? recv_sm_channels[i].poll(rloop + 1 - ready_loop) :
-          //                                                         recv_proxy_channels[i - nrecv_sm].poll(rloop + 1 - ready_loop));
-          if (ready_loop < nloops) ready[i] += (i < nrecv_sm ? recv_sm_channels[i].poll(nloops - ready_loop) :
-                                                               recv_proxy_channels[i - nrecv_sm].poll(nloops - ready_loop));
-        }
-        __syncthreads();
+    int min_ready = 0;
+    for (int loop = 0; loop < nloops; ++loop) {
+      if (nrecv_sm + nrecv_proxy > 0) {
+        const uint64_t s_start = (loop % max_pending_sends) * nelem_per_send;
+        const uint64_t d_start = data_start + loop * nelem_per_send;
+        const uint64_t nElem = min(nelem_per_send, data_start + nelem_total - d_start);
+        const uint64_t nElem4 = nElem / 4;
+        const uint64_t nLastElem = nElem % 4;
+        int4* const data4 = (int4*) &data[d_start];
 
-        int count[N_PEERS] = {};
-        rloop = nloops;
-        for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
-          const int ready_loop = ready[i];
-          if (reduced[i] < ready_loop){
+        do {
+          if (min_ready <= loop) {
+            bool hasUpdate;
             do {
-              const uint64_t s_start = (reduced[i] % max_pending_sends) * nelem_per_send;
-              const uint64_t d_start = data_start + reduced[i] * nelem_per_send;
-              const int diff = min(ready_loop - reduced[i], max_pending_sends - reduced[i] % max_pending_sends);
+              hasUpdate = false;
+              for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
+                const int ready_loop = ready[i];
+                if (ready_loop < nloops) {
+                  int update = (i < nrecv_sm ? recv_sm_channels[i].poll(nloops - ready_loop) :
+                                               recv_proxy_channels[i - nrecv_sm].poll(nloops - ready_loop));
+                  if (update > 0) hasUpdate = true;
+                  ready[i] = ready_loop + update;
+                }
+              }
+            } while (!__syncthreads_or(hasUpdate));
+          }
 
-              const uint64_t nElem = min(nelem_per_send * diff, data_start + nelem_total - d_start);
-              const uint64_t nElem4 = nElem / 4;
-              const uint64_t nLastElem = nElem % 4;
-
-              int4* const data4 = (int4*) &data[d_start];
-              int4* const scratch4 = (int4*) &recv_scratches[i][s_start];
+          min_ready = nloops;
+          for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
+            const int ready_loop = ready[i];
+            if (ready_loop < min_ready) min_ready = ready_loop;
+            if (ready_loop > loop && reduced[i] == loop) {
+              int4* scratch4 = (int4*) &recv_scratches[i][s_start];
               for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
                 data4[offset].w += scratch4[offset].w;
                 data4[offset].x += scratch4[offset].x;
@@ -95,74 +98,56 @@ MSCCLPP_DEVICE_INLINE void
               for (uint64_t offset = tid; offset < nLastElem; offset += blockDim.x) {
                 data[d_start + nElem4 * 4 + offset] += recv_scratches[i][s_start + nElem4 * 4 + offset];
               }
-              reduced[i] += diff;
-              count[i] += diff;
-            } while (reduced[i] < ready_loop);
-            __syncthreads();
-          }
-          if (reduced[i] < rloop) rloop = reduced[i];
-        }
-
-        for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
-          if (count[i] > 0) {
-            if (i < nrecv_sm) recv_sm_channels[i].signal(count[i]);
-            else recv_proxy_channels[i - nrecv_sm].signal(count[i]);
-          }
-        }
-      }
-
-      if (sloop < rloop) {
-        // assert nsend_sm + nsend_proxy > 0
-        if (node_type == 0) { // root
-          for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(rloop - sloop);
-          for (int i = tid; i < nsend_proxy; i += blockDim.x) {
-            for (int loop = sloop; loop < rloop; ++loop) {
-              uint64_t d_start = data_start + loop * nelem_per_send;
-              uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-              send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
+              ++reduced[i];
             }
           }
-          sloop = rloop;
+          __syncthreads();
+        } while (min_ready <= loop);
+      }
+
+      if (nsend_sm + nsend_proxy > 0) {
+        if (node_type == 0) { // root
+          for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal();
+          for (int i = tid; i < nsend_proxy; i += blockDim.x) {
+            uint64_t d_start = data_start + loop * nelem_per_send;
+            uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+            send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
+          }
         } else {
           // assert nsend_sm + nsend_proxy == 1
           int psends = pending_sends;
           if (psends == max_pending_sends) {
-            if (tid == 0) pending_sends -= (nsend_sm == 1 ? send_sm_channels[0].poll(psends) : 
-                                                            send_proxy_channels[0].poll(psends));
-            __syncthreads();
-            psends = pending_sends;
-            if (psends == max_pending_sends) {
-              __syncthreads();
-              continue;
+            if (tid == 0) {
+              if (nsend_sm == 1) {
+                send_sm_channels[0].wait();
+                psends -= 1 + send_sm_channels[0].poll(psends - 1);
+              } else {
+                send_proxy_channels[0].wait();
+                psends -= 1 + send_proxy_channels[0].poll(psends - 1);
+              }
             }
+            __syncthreads();
           }
-          
-          // pipeline send: ensure one send (one nelem_per_send) one signal
+
+          uint64_t s_start = (loop % max_pending_sends) * nelem_per_send;
+          uint64_t d_start = data_start + loop * nelem_per_send;
+          uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
           if (nsend_sm == 1) {
-            do {
-              uint64_t s_start = (sloop % max_pending_sends) * nelem_per_send;
-              uint64_t d_start = data_start + sloop * nelem_per_send;
-              uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-              send_sm_channels[0].put(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
-              ++sloop;
-              ++psends;
-              __syncthreads();
-              if (tid == 0) send_sm_channels[0].signal();
-            } while (psends < max_pending_sends && sloop < rloop);
-          } else { // nsend_proxy == 1
-            do {
-              uint64_t s_start = (sloop % max_pending_sends) * nelem_per_send;
-              uint64_t d_start = data_start + sloop * nelem_per_send;
-              uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-              if (tid == 0) send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
-              ++sloop;
-              ++psends;
-            } while (psends < max_pending_sends && sloop < rloop);
+            send_sm_channels[0].put(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
+            __syncthreads();
+            if (tid == 0) {
+              send_sm_channels[0].signal();
+              pending_sends = psends + 1;
+            }
+          } else if (tid == 0) {
+            send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
+            pending_sends = psends + 1;
           }
-          if (tid == 0) pending_sends = psends;
           __syncthreads();
         }
       }
+
+      for (int i = tid; i < nrecv_sm; i += blockDim.x) recv_sm_channels[i].signal();
     }
   } else {
     // assert nrecv_sm + nrecv_proxy <= 1
@@ -181,17 +166,13 @@ MSCCLPP_DEVICE_INLINE void
       if (tid == 0) ready = 0;
       while (sloop < nloops) {
         if (tid == 0) {
-          int ready_loop = sloop;
           if (nrecv_sm == 1) {
-            do {
-              ready_loop += recv_sm_channels[0].poll(nloops - ready_loop);
-            } while (ready_loop == sloop);
+            recv_sm_channels[0].wait();
+            ready = sloop + 1 + recv_sm_channels[0].poll(nloops - sloop - 1);
           } else {
-            do {
-              ready_loop += recv_proxy_channels[0].poll(nloops - ready_loop);
-            } while (ready_loop == sloop);
+            recv_proxy_channels[0].wait();
+            ready = sloop + 1 + recv_proxy_channels[0].poll(nloops - sloop - 1);
           }
-          ready = ready_loop;
         }
         __syncthreads();
         const int ready_loop = ready;

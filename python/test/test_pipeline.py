@@ -18,30 +18,30 @@ def test_sm_send_recv_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_tota
         # sender
         memory = cp.arange(nelem_total, dtype=cp.int32)
         dest = group.my_rank + 1
-        recv_channels = {}
-        send_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        recv_sm_channels = {}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
     elif group.my_rank == group.nranks - 1:
         # recver
         memory = cp.zeros(nelem_total, dtype=cp.int32)
         src = group.my_rank - 1
-        recv_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
-        send_channels = {}
+        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
+        send_sm_channels = {}
     else:
         # recv send
         memory = cp.zeros(nelem_total, dtype=cp.int32)
         src = group.my_rank - 1
         dest = group.my_rank + 1
-        recv_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
-        send_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     scratch_size = 0
-    recv_scratches = {}
+    recv_sm_scratches = {}
     node_types = {0: 1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_channels, send_channels, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_scratches, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
+                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
                             nelem_per_send, nblocks)
     
     group.barrier()
@@ -61,31 +61,31 @@ def test_sm_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nel
     if group.my_rank == 0:
         # sender
         dest = group.my_rank + 1
-        recv_channels = {}
-        send_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
-        recv_scratches = {}
+        recv_sm_channels = {}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        recv_sm_scratches = {}
     elif group.my_rank == group.nranks - 1:
         # recver
         scratch = cp.array([1000] * scratch_size, dtype=cp.int32)
         src = group.my_rank - 1
-        recv_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
-        send_channels = {}
-        recv_scratches = {0: [scratch]}
+        recv_sm_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
+        send_sm_channels = {}
+        recv_sm_scratches = {0: [scratch]}
     else:
         # recv reduce send
         scratch = cp.array([1000] * scratch_size, dtype=cp.int32)
         src = group.my_rank - 1
         dest = group.my_rank + 1
-        recv_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
-        send_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
-        recv_scratches = {0: [scratch]}
+        recv_sm_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        recv_sm_scratches = {0: [scratch]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     node_types = {0: -1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_channels, send_channels, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_scratches, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
+                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
                             nelem_per_send, nblocks)
     
     group.barrier()
@@ -103,23 +103,23 @@ def test_sm_multipeer_broadcast(mpi_group: MpiGroup, nelem_per_send: int, nelem_
     if group.my_rank == 0:
         # sender
         memory = cp.arange(nelem_total, dtype=cp.int32)
-        recv_channels = {}
-        send_channels = {0: list(group.make_sm_channels(memory, 
+        recv_sm_channels = {}
+        send_sm_channels = {0: list(group.make_sm_channels(memory, 
             {dest: connections[dest] for dest in range(group.my_rank + 1, group.nranks)}).values())}
     else:
         # recver
         memory = cp.zeros(nelem_total, dtype=cp.int32)
-        recv_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
-        send_channels = {}
+        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
+        send_sm_channels = {}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     scratch_size = 0
-    recv_scratches = {}
+    recv_sm_scratches = {}
     node_types = {0: 1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_channels, send_channels, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_scratches, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
+                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
                             nelem_per_send, nblocks)
     
     group.barrier()
@@ -138,23 +138,23 @@ def test_sm_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_tot
     memory = cp.ones(nelem_total, dtype=cp.int32)
     if group.my_rank == 0:
         # recver
-        recv_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
-                              for _ in range(1, group.nranks)]}
-        recv_channels = {0: [group.make_sm_channel(recv_scratches[0][dest - 1], connections[dest], dest)
-                             for dest in range(1, group.nranks)]}
-        send_channels = {}
+        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
+                                 for _ in range(1, group.nranks)]}
+        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][dest - 1], connections[dest], dest)
+                                for dest in range(1, group.nranks)]}
+        send_sm_channels = {}
     else:
         # sender
-        recv_scratches = {}
-        recv_channels = {}
-        send_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
+        recv_sm_scratches = {}
+        recv_sm_channels = {}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     node_types = {0: -1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_channels, send_channels, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_scratches, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
+                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
                             nelem_per_send, nblocks)
     
     group.barrier()
@@ -177,33 +177,33 @@ def test_sm_root1(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sc
     if group.my_rank < root_rank:
         # reduce node
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_scratches = {}
-        recv_channels = {}
-        send_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        recv_sm_scratches = {}
+        recv_sm_channels = {}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
         node_types = {0: -1}
     elif group.my_rank == root_rank:
         # root
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
-                              for _ in range(root_rank)]}
-        recv_channels = {0: [group.make_sm_channel(recv_scratches[0][dest], connections[dest], dest)
-                             for dest in range(root_rank)]}
-        send_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)
-                             for dest in range(root_rank + 1, group.nranks)]}
+        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
+                                 for _ in range(root_rank)]}
+        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][dest], connections[dest], dest)
+                                for dest in range(root_rank)]}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)
+                                for dest in range(root_rank + 1, group.nranks)]}
         node_types = {0: 0}
     else:
         # broadcast node
         memory = cp.zeros(nelem_total, dtype=cp.int32)
-        recv_scratches = {}
-        recv_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
-        send_channels = {}
+        recv_sm_scratches = {}
+        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        send_sm_channels = {}
         node_types = {0: 1}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_channels, send_channels, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_scratches, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
+                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
                             nelem_per_send, nblocks)
     
     group.barrier()
@@ -226,9 +226,9 @@ def test_sm_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sc
     if group.my_rank < root_rank:
         # reduce at tb0, broadcast at tb1
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_scratches = {}
-        recv_channels = {1: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
-        send_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        recv_sm_scratches = {}
+        recv_sm_channels = {1: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
         node_types = {0: -1, 1: 1}
         data_offsets = {0: 0, 1: 0}
         data_sizes = {0: nelem_total, 1: nelem_total}
@@ -236,20 +236,20 @@ def test_sm_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sc
     elif group.my_rank == root_rank:
         # root
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
-                              for _ in range(root_rank)]}
+        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
+                                 for _ in range(root_rank)]}
         # Creating send channels first because non-root nodes create recv channels first
-        send_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)
-                             for dest in range(root_rank)]}
-        recv_channels = {0: [group.make_sm_channel(recv_scratches[0][dest], connections[dest], dest)
-                             for dest in range(root_rank)]}
+        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)
+                                for dest in range(root_rank)]}
+        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][dest], connections[dest], dest)
+                                for dest in range(root_rank)]}
         node_types = {0: 0}
         data_offsets = {0: 0}
         data_sizes = {0: nelem_total}
         nblocks = 1
 
-    kernel = PipelineKernel(recv_channels, send_channels, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_scratches, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
+                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
                             nelem_per_send, nblocks)
     
     group.barrier()

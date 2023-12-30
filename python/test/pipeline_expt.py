@@ -20,6 +20,7 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup, con
         print("#" * 25 + " Allreduce " + "#" * 25)
         print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size},\n"
               f"check_iters={check_iters}, iters={iters}")
+        print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
         print_row("size (B)", "time (us)", "algbw (GB/s)")
     for length in data_lengths:
@@ -65,6 +66,7 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup, con
         print("#" * 25 + " Allgather " + "#" * 25)
         print(f"k={k}, nelem_per_send={nelem_per_send},\n"
               f"check_iters={check_iters}, iters={iters}")
+        print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
         print_row("size(B)", "time(us)", "algbw(GB/s)")
     for length in data_lengths:

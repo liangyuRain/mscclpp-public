@@ -18,10 +18,15 @@ struct Host2DeviceSemaphoreDeviceHandle {
 #if defined(MSCCLPP_DEVICE_COMPILE)
   /// Poll if the host has signaled.
   /// @return true if the host has signaled.
-  MSCCLPP_DEVICE_INLINE bool poll() {
-    bool signaled = (atomicLoad(inboundSemaphoreId, memoryOrderAcquire) > (*expectedInboundSemaphoreId));
-    if (signaled) (*expectedInboundSemaphoreId) += 1;
-    return signaled;
+  MSCCLPP_DEVICE_INLINE uint64_t poll(const int64_t max_poll = 1) {
+    uint64_t count = (atomicLoad(inboundSemaphoreId, memoryOrderAcquire) - (*expectedInboundSemaphoreId));
+    if (max_poll <= 0 || count <= 0) {
+      return 0;
+    } else {
+      if (max_poll < count) count = max_poll;
+      *expectedInboundSemaphoreId += count;
+      return count;
+    }
   }
 
   /// Wait for the host to signal.
