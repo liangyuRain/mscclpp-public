@@ -46,6 +46,7 @@ class PipelineKernel:
     ):
         n_peers = max([len(recv_sm_channels.get(bid, [])) + len(recv_proxy_channels.get(bid, [])) for bid in range(nblocks)] +
                       [len(send_sm_channels.get(bid, [])) + len(send_proxy_channels.get(bid, [])) for bid in range(nblocks)] + [1])
+        assert n_peers <= 8, "N_PEERS=8 in pipeline_kernel.cu"
         n_recv_sm_channels = sum(len(l) for l in recv_sm_channels.values())
         n_send_sm_channels = sum(len(l) for l in send_sm_channels.values())
         n_recv_proxy_channels = sum(len(l) for l in recv_proxy_channels.values())
