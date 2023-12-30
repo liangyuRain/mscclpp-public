@@ -22,7 +22,7 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup, con
               f"check_iters={check_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
-        print_row("size (B)", "time (us)", "algbw (GB/s)")
+        print_row("size(B)", "time(us)", "algbw(GB/s)")
     for length in data_lengths:
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
