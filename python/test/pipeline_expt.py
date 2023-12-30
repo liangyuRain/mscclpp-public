@@ -5,12 +5,12 @@ import math
 import numpy as np
 
 import mscclpp.comm as mscclpp_comm
-from .pipeline_schedule import allreduce_kernel, allgather_kernel, connect_nvlink
+from .pipeline_schedule import allreduce_kernel, allgather_kernel, connect_nvlink, KERNEL_FILE
 from .mscclpp_mpi import MpiGroup
 
 
 def print_row(*args):
-    print("".join(f"{arg:>20}" for arg in args))
+    print("".join(f"{arg:>20}" for arg in args), flush=True)
 
 
 def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup, connections: dict,
@@ -104,7 +104,7 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup, con
 
 if __name__ == "__main__":
     mpi_group = MpiGroup(list(range(8)))
-    group = mscclpp_comm.CommGroup(mpi_group)
+    group = mscclpp_comm.CommGroup(mpi_group.comm)
 
     # allpairs
     k = 8
