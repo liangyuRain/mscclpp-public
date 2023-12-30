@@ -209,6 +209,7 @@ MSCCLPP_DEVICE_INLINE void
       }
     }
   }
+  for (int i = tid; i < nsend_proxy; i += blockDim.x) send_proxy_channels[i].flush(); // question?
 }
 
 /// Call threadblockCall.

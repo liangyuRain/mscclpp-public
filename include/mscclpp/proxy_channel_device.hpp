@@ -162,7 +162,7 @@ struct ProxyChannelDeviceHandle {
 
   /// Check if the proxy channel has been signaled.
   /// @return true if the proxy channel has been signaled.
-  MSCCLPP_DEVICE_INLINE bool poll(const int64_t max_poll = 1) { return semaphore_.poll(max_poll); }
+  MSCCLPP_DEVICE_INLINE uint64_t poll(const int64_t max_poll = 1) { return semaphore_.poll(max_poll); }
 
   /// Wait for the proxy channel to be signaled.
   /// @param maxSpinCount The maximum number of spin counts before asserting. Never assert if negative.
@@ -226,7 +226,7 @@ struct SimpleProxyChannelDeviceHandle {
 
   /// Check if the proxy channel has been signaled.
   /// @return true if the proxy channel has been signaled.
-  MSCCLPP_DEVICE_INLINE bool poll(const int64_t max_poll = 1) { return proxyChan_.poll(max_poll); }
+  MSCCLPP_DEVICE_INLINE uint64_t poll(const int64_t max_poll = 1) { return proxyChan_.poll(max_poll); }
 
   /// Wait for the proxy channel to be signaled.
   /// @param maxSpinCount The maximum number of spin counts before asserting. Never assert if negative.
