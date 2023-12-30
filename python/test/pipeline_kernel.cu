@@ -70,13 +70,24 @@ MSCCLPP_DEVICE_INLINE void
           const int ready_loop = ready[i];
           if (reduced[i] < ready_loop){
             do {
-              uint64_t s_start = (reduced[i] % max_pending_sends) * nelem_per_send;
-              uint64_t d_start = data_start + reduced[i] * nelem_per_send;
-              int diff = min(ready_loop - reduced[i], max_pending_sends - reduced[i] % max_pending_sends);
-              for (uint64_t offset = tid;
-                   offset < nelem_per_send * diff && d_start + offset < data_start + nelem_total;
-                   offset += blockDim.x) {
-                data[d_start + offset] += recv_scratches[i][s_start + offset];
+              const uint64_t s_start = (reduced[i] % max_pending_sends) * nelem_per_send;
+              const uint64_t d_start = data_start + reduced[i] * nelem_per_send;
+              const int diff = min(ready_loop - reduced[i], max_pending_sends - reduced[i] % max_pending_sends);
+
+              const uint64_t nElem = min(nelem_per_send * diff, data_start + nelem_total - d_start);
+              const uint64_t nElem4 = nElem / 4;
+              const uint64_t nLastElem = nElem % 4;
+
+              int4* const data4 = (int4*) &data[d_start];
+              int4* const scratch4 = (int4*) &recv_scratches[i][s_start];
+              for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
+                data4[offset].w += scratch4[offset].w;
+                data4[offset].x += scratch4[offset].x;
+                data4[offset].y += scratch4[offset].y;
+                data4[offset].z += scratch4[offset].z;
+              }
+              for (uint64_t offset = tid; offset < nLastElem; offset += blockDim.x) {
+                data[d_start + nElem4 * 4 + offset] += recv_scratches[i][s_start + nElem4 * 4 + offset];
               }
               reduced[i] += diff;
               count[i] += diff;
