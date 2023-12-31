@@ -227,21 +227,28 @@ def make_recv_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyServic
     for dest in recv_peers:
         connect = connections[dest]
         recv_buf = cp.zeros(scratch_size, dtype=cp.int32) if scratch_size is not None else data
-        if connect.transport() == Transport.CudaIpc:
-            if scratch_size is not None:
-                recv_sm_scratches.append(recv_buf)
-            recv_sm_channels.append(group.make_sm_channel(recv_buf, connect, dest))
-        elif connect.transport() in IB_TRANSPORTS:
-            if scratch_size is not None:
-                recv_proxy_scratches.append(recv_buf)
-            recv_proxy_channels.append(
-                group.make_proxy_channel(proxy_service, recv_buf, connect, dest))
-        else:
-            assert False
-    send_sm_channels = [group.make_sm_channel(data, connections[dest], dest) 
-                        for dest in send_peers if connections[dest].transport() == Transport.CudaIpc]
+        # if connect.transport() == Transport.CudaIpc:
+        #     if scratch_size is not None:
+        #         recv_sm_scratches.append(recv_buf)
+        #     recv_sm_channels.append(group.make_sm_channel(recv_buf, connect, dest))
+        # elif connect.transport() in IB_TRANSPORTS:
+        #     if scratch_size is not None:
+        #         recv_proxy_scratches.append(recv_buf)
+        #     recv_proxy_channels.append(
+        #         group.make_proxy_channel(proxy_service, recv_buf, connect, dest))
+        # else:
+        #     assert False
+        if scratch_size is not None:
+            recv_proxy_scratches.append(recv_buf)
+        recv_proxy_channels.append(
+            group.make_proxy_channel(proxy_service, recv_buf, connect, dest))
+    # send_sm_channels = [group.make_sm_channel(data, connections[dest], dest) 
+    #                     for dest in send_peers if connections[dest].transport() == Transport.CudaIpc]
+    # send_proxy_channels = [group.make_proxy_channel(proxy_service, data, connections[dest], dest) 
+    #                        for dest in send_peers if connections[dest].transport() in IB_TRANSPORTS]
+    send_sm_channels = []
     send_proxy_channels = [group.make_proxy_channel(proxy_service, data, connections[dest], dest) 
-                           for dest in send_peers if connections[dest].transport() in IB_TRANSPORTS]
+                           for dest in send_peers]
     if scratch_size is not None:
         return (recv_sm_channels, send_sm_channels,
                 recv_proxy_channels, send_proxy_channels,
