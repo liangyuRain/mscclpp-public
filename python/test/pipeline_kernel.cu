@@ -109,16 +109,17 @@ MSCCLPP_DEVICE_INLINE void
             else recv_proxy_channels[i - nrecv_sm].signal(count[i]);
           }
         }
+        __syncthreads(); // Necessary; otherwise, program can freeze in multirun allreduce.
       }
 
       if (sloop < rloop) {
         // assert nsend_sm + nsend_proxy > 0
         if (node_type == 0) { // root
           for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(rloop - sloop);
-          for (int i = tid; i < nsend_proxy; i += blockDim.x) {
-            for (int loop = sloop; loop < rloop; ++loop) {
-              uint64_t d_start = data_start + loop * nelem_per_send;
-              uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+          for (int loop = sloop; loop < rloop; ++loop) {
+            const uint64_t d_start = data_start + loop * nelem_per_send;
+            const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+            for (int i = tid; i < nsend_proxy; i += blockDim.x) {
               send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
             }
           }
@@ -168,10 +169,10 @@ MSCCLPP_DEVICE_INLINE void
     // assert nrecv_sm + nrecv_proxy <= 1
     if (nrecv_sm == 0 && nrecv_proxy == 0) {
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(nloops);
-      for (int i = tid; i < nsend_proxy; i += blockDim.x) {
-        for (int sloop = 0; sloop < nloops; ++sloop) {
-          uint64_t d_start = data_start + sloop * nelem_per_send;
-          uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+      for (int sloop = 0; sloop < nloops; ++sloop) {
+        const uint64_t d_start = data_start + sloop * nelem_per_send;
+        const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+        for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
