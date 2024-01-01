@@ -84,10 +84,12 @@ MSCCLPP_DEVICE_INLINE void
           }
 
           min_ready = nloops;
+          bool chHasUpdate[N_PEERS];
           for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
             const int ready_loop = ready[i];
             if (ready_loop < min_ready) min_ready = ready_loop;
             if (ready_loop > loop && reduced[i] == loop) {
+              chHasUpdate[i] = true;
               int4* scratch4 = (int4*) &recv_scratches[i][s_start];
               for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
                 data4[offset].w += scratch4[offset].w;
@@ -99,6 +101,15 @@ MSCCLPP_DEVICE_INLINE void
                 data[d_start + nElem4 * 4 + offset] += recv_scratches[i][s_start + nElem4 * 4 + offset];
               }
               ++reduced[i];
+            } else {
+              chHasUpdate[i] = false;
+            }
+          }
+          __syncthreads();
+          for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
+            if (chHasUpdate[i]) {
+              if (i < nrecv_sm) recv_sm_channels[i].signal();
+              else recv_proxy_channels[i - nrecv_sm].signal();
             }
           }
           __syncthreads();
@@ -146,17 +157,15 @@ MSCCLPP_DEVICE_INLINE void
           __syncthreads();
         }
       }
-
-      for (int i = tid; i < nrecv_sm; i += blockDim.x) recv_sm_channels[i].signal();
     }
   } else {
     // assert nrecv_sm + nrecv_proxy <= 1
     if (nrecv_sm == 0 && nrecv_proxy == 0) {
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(nloops);
-      for (int i = tid; i < nsend_proxy; i += blockDim.x) {
-        for (int sloop = 0; sloop < nloops; ++sloop) {
-          uint64_t d_start = data_start + sloop * nelem_per_send;
-          uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+      for (int sloop = 0; sloop < nloops; ++sloop) {
+        uint64_t d_start = data_start + sloop * nelem_per_send;
+        uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+        for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
@@ -190,6 +199,7 @@ MSCCLPP_DEVICE_INLINE void
       }
     }
   }
+  for (int i = tid; i < nsend_proxy; i += blockDim.x) send_proxy_channels[i].flush(); // question?
 }
 
 /// Call threadblockCall.
