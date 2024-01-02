@@ -188,12 +188,11 @@ MSCCLPP_DEVICE_INLINE void
         do {
           uint64_t d_start = data_start + sloop * nelem_per_send;
           uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-          for (int i = tid; i < nsend_proxy; i += blockDim.x) {
-            send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
-          }
           if (nrecv_sm == 1) recv_sm_channels[0].get(d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
           ++sloop;
           __syncthreads();
+          for (int i = tid; i < nsend_proxy; i += blockDim.x)
+            send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
           for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal();
         } while (sloop < ready_loop);
       }
