@@ -15,6 +15,16 @@
 
 /// The call is a single node in the tree.
 ///
+/// Syncronization: It is guaranteed that in allreduce and allgather, after the kernel finishes,
+/// the memory is safe to be written. However, the kernel immediately starts to write remote
+/// memory once launched. There are two cases:
+/// Allreduce - The kernel writes to remote scratch buffer in the beginning. As long as the remote
+/// peer has finished initializing scratch buffer, the write is safe.
+/// Allgather - The kernel writes to remote memory shard in the beginning. As long as the remote
+/// peer has finished initializing all shards except its own, the write is safe. If the remote
+/// needs to initialize all memory, then synchronization is needed to ensure remote initialization
+/// finishes before local kernel launch.
+///
 /// @param recv_sm_channels SM channels for recv.
 /// @param send_sm_channels SM channels for send.
 /// @param recv_proxy_channels Proxy channels for recv.
@@ -165,6 +175,9 @@ MSCCLPP_DEVICE_INLINE void
         }
       }
     }
+    if (node_type == 0) { // root
+      for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].wait();
+    }
   } else {
     // assert nrecv_sm + nrecv_proxy <= 1
     if (nrecv_sm == 0 && nrecv_proxy == 0) {
@@ -208,6 +221,8 @@ MSCCLPP_DEVICE_INLINE void
         } while (sloop < ready_loop);
       }
     }
+    if (tid == 0 && nrecv_sm == 1) recv_sm_channels[0].signal(); // `signal` to ensure sender wait until `get` finishes
+    for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].wait();
   }
   for (int i = tid; i < nsend_proxy; i += blockDim.x) send_proxy_channels[i].flush(); // question?
 }
