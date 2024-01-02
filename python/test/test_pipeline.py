@@ -2,6 +2,7 @@ import cupy as cp
 import pytest
 import itertools
 
+from mscclpp import ProxyService
 from .mscclpp_mpi import MpiGroup, parametrize_mpi_groups, mpi_group
 from .test_mscclpp import create_and_connect
 
@@ -11,152 +12,235 @@ from .pipeline_schedule import PipelineKernel, allreduce_kernel, allgather_kerne
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("nelem_total", [20, 1024])
-def test_sm_send_recv_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_send_recv_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_send_recv_chain("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"nelem_total={nelem_total}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    proxy_service = ProxyService()
 
+    recv_sm_channels, send_sm_channels = {}, {}
+    recv_proxy_channels, send_proxy_channels = {}, {}
     if group.my_rank == 0:
         # sender
         memory = cp.arange(nelem_total, dtype=cp.int32)
         dest = group.my_rank + 1
-        recv_sm_channels = {}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        if group.my_rank // sm_node_size == dest // sm_node_size:
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        else:
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)]}
     elif group.my_rank == group.nranks - 1:
         # recver
         memory = cp.zeros(nelem_total, dtype=cp.int32)
         src = group.my_rank - 1
-        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
-        send_sm_channels = {}
+        if group.my_rank // sm_node_size == src // sm_node_size:
+            recv_sm_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
+        else:
+            recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[src], src)]}
     else:
         # recv send
         memory = cp.zeros(nelem_total, dtype=cp.int32)
         src = group.my_rank - 1
         dest = group.my_rank + 1
-        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        if group.my_rank // sm_node_size == src // sm_node_size:
+            recv_sm_channels = {0: [group.make_sm_channel(memory, connections[src], src)]}
+        else:
+            recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[src], src)]}
+        if group.my_rank // sm_node_size == dest // sm_node_size:
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        else:
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     scratch_size = 0
-    recv_sm_scratches = {}
     node_types = {0: 1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                            memory, data_offsets, data_sizes, scratch_size, {}, {}, node_types, 
                             nelem_per_send, nblocks)
     
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     assert cp.array_equal(memory, cp.arange(nelem_total, dtype=cp.int32))
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
-def test_sm_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int,
+                                scratch_size: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_send_recv_reduce_chain("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"nelem_total={nelem_total}, "
+              f"scratch_size={scratch_size}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    proxy_service = ProxyService()
 
     memory = cp.ones(nelem_total, dtype=cp.int32)
+    recv_sm_channels, send_sm_channels, recv_sm_scratches = {}, {}, {}
+    recv_proxy_channels, send_proxy_channels, recv_proxy_scratches = {}, {}, {}
     if group.my_rank == 0:
         # sender
         dest = group.my_rank + 1
-        recv_sm_channels = {}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
-        recv_sm_scratches = {}
+        if group.my_rank // sm_node_size == dest // sm_node_size:
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        else:
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)]}
     elif group.my_rank == group.nranks - 1:
         # recver
         scratch = cp.array([1000] * scratch_size, dtype=cp.int32)
         src = group.my_rank - 1
-        recv_sm_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
-        send_sm_channels = {}
-        recv_sm_scratches = {0: [scratch]}
+        if group.my_rank // sm_node_size == src // sm_node_size:
+            recv_sm_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
+            recv_sm_scratches = {0: [scratch]}
+        else:
+            recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, scratch, connections[src], src)]}
+            recv_proxy_scratches = {0: [scratch]}
     else:
         # recv reduce send
         scratch = cp.array([1000] * scratch_size, dtype=cp.int32)
         src = group.my_rank - 1
         dest = group.my_rank + 1
-        recv_sm_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
-        recv_sm_scratches = {0: [scratch]}
+        if group.my_rank // sm_node_size == src // sm_node_size:
+            recv_sm_channels = {0: [group.make_sm_channel(scratch, connections[src], src)]}
+            recv_sm_scratches = {0: [scratch]}
+        else:
+            recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, scratch, connections[src], src)]}
+            recv_proxy_scratches = {0: [scratch]}
+        if group.my_rank // sm_node_size == dest // sm_node_size:
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
+        else:
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     node_types = {0: -1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                            memory, data_offsets, data_sizes, scratch_size,
+                            recv_sm_scratches, recv_proxy_scratches, node_types, 
                             nelem_per_send, nblocks)
     
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     assert cp.array_equal(memory, cp.array([group.my_rank + 1] * nelem_total, dtype=cp.int32))
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(3, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("nelem_total", [20, 1024])
-def test_sm_multipeer_broadcast(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_multipeer_broadcast(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int,
+                             sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_multipeer_broadcast("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"nelem_total={nelem_total}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    proxy_service = ProxyService()
 
+    recv_sm_channels, send_sm_channels = {}, {}
+    recv_proxy_channels, send_proxy_channels = {}, {}
     if group.my_rank == 0:
         # sender
         memory = cp.arange(nelem_total, dtype=cp.int32)
-        recv_sm_channels = {}
         send_sm_channels = {0: list(group.make_sm_channels(memory, 
-            {dest: connections[dest] for dest in range(group.my_rank + 1, group.nranks)}).values())}
+            {dest: connections[dest] for dest in range(group.my_rank + 1, group.nranks)
+             if group.my_rank // sm_node_size == dest // sm_node_size}).values())}
+        send_proxy_channels = {0: list(group.make_proxy_channels(proxy_service, memory, 
+            {dest: connections[dest] for dest in range(group.my_rank + 1, group.nranks)
+             if group.my_rank // sm_node_size != dest // sm_node_size}).values())}
     else:
         # recver
         memory = cp.zeros(nelem_total, dtype=cp.int32)
-        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
-        send_sm_channels = {}
+        if group.my_rank // sm_node_size == 0 // sm_node_size:
+            recv_sm_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
+        else:
+            recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[0], 0)]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     scratch_size = 0
-    recv_sm_scratches = {}
     node_types = {0: 1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels, 
+                            memory, data_offsets, data_sizes, scratch_size, {}, {}, node_types,
                             nelem_per_send, nblocks)
     
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     assert cp.array_equal(memory, cp.arange(nelem_total, dtype=cp.int32))
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(3, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
-def test_sm_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int,
+                          sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_multipeer_reduce("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"nelem_total={nelem_total}, "
+              f"scratch_size={scratch_size}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    proxy_service = ProxyService()
 
     memory = cp.ones(nelem_total, dtype=cp.int32)
+    recv_sm_channels, send_sm_channels, recv_sm_scratches = {}, {}, {}
+    recv_proxy_channels, send_proxy_channels, recv_proxy_scratches = {}, {}, {}
     if group.my_rank == 0:
         # recver
-        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
-                                 for _ in range(1, group.nranks)]}
-        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][dest - 1], connections[dest], dest)
-                                for dest in range(1, group.nranks)]}
-        send_sm_channels = {}
+        sm_recv_peers = [dest for dest in range(1, group.nranks) if group.my_rank // sm_node_size == dest // sm_node_size]
+        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) for _ in sm_recv_peers]}
+        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][idx], connections[dest], dest)
+                                for idx, dest in enumerate(sm_recv_peers)]}
+        
+        proxy_recv_peers = [dest for dest in range(1, group.nranks) if group.my_rank // sm_node_size != dest // sm_node_size]
+        recv_proxy_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) for _ in proxy_recv_peers]}
+        recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, recv_proxy_scratches[0][idx], connections[dest], dest)
+                                   for idx, dest in enumerate(proxy_recv_peers)]}
     else:
         # sender
-        recv_sm_scratches = {}
-        recv_sm_channels = {}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
+        if group.my_rank // sm_node_size == 0 // sm_node_size:
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[0], 0)]}
+        else:
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[0], 0)]}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     node_types = {0: -1}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                            memory, data_offsets, data_sizes, scratch_size, 
+                            recv_sm_scratches, recv_proxy_scratches, node_types, 
                             nelem_per_send, nblocks)
     
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
@@ -164,48 +248,74 @@ def test_sm_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_tot
         assert cp.array_equal(memory, cp.array([group.nranks] * nelem_total, dtype=cp.int32))
     else:
         assert cp.array_equal(memory, cp.ones(nelem_total, dtype=cp.int32))
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(3, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
-def test_sm_root1(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_root1(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_root1("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"nelem_total={nelem_total}, "
+              f"scratch_size={scratch_size}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    proxy_service = ProxyService()
 
     root_rank = group.nranks // 2
+    recv_sm_channels, send_sm_channels, recv_sm_scratches = {}, {}, {}
+    recv_proxy_channels, send_proxy_channels, recv_proxy_scratches = {}, {}, {}
     if group.my_rank < root_rank:
         # reduce node
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_sm_scratches = {}
-        recv_sm_channels = {}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        if group.my_rank // sm_node_size == root_rank // sm_node_size:
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        else:
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[root_rank], root_rank)]}
         node_types = {0: -1}
     elif group.my_rank == root_rank:
         # root
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
-                                 for _ in range(root_rank)]}
-        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][dest], connections[dest], dest)
-                                for dest in range(root_rank)]}
+
+        sm_recv_peers = [dest for dest in range(root_rank) if group.my_rank // sm_node_size == dest // sm_node_size]
+        sm_send_peers = [dest for dest in range(root_rank + 1, group.nranks) if group.my_rank // sm_node_size == dest // sm_node_size]
+        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) for _ in sm_recv_peers]}
+        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][idx], connections[dest], dest)
+                                for idx, dest in enumerate(sm_recv_peers)]}
         send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)
-                                for dest in range(root_rank + 1, group.nranks)]}
+                                for dest in sm_send_peers]}
+        
+        proxy_recv_peers = [dest for dest in range(root_rank) if group.my_rank // sm_node_size != dest // sm_node_size]
+        proxy_send_peers = [dest for dest in range(root_rank + 1, group.nranks) if group.my_rank // sm_node_size != dest // sm_node_size]
+        recv_proxy_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) for _ in proxy_recv_peers]}
+        recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, recv_proxy_scratches[0][idx], connections[dest], dest)
+                                   for idx, dest in enumerate(proxy_recv_peers)]}
+        send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)
+                                   for dest in proxy_send_peers]}
         node_types = {0: 0}
     else:
         # broadcast node
         memory = cp.zeros(nelem_total, dtype=cp.int32)
-        recv_sm_scratches = {}
-        recv_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
-        send_sm_channels = {}
+        if group.my_rank // sm_node_size == root_rank // sm_node_size:
+            recv_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        else:
+            recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[root_rank], root_rank)]}
         node_types = {0: 1}
     data_offsets = {0: 0}
     data_sizes = {0: nelem_total}
     nblocks = 1
 
-    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                            memory, data_offsets, data_sizes, scratch_size, 
+                            recv_sm_scratches, recv_proxy_scratches, node_types, 
                             nelem_per_send, nblocks)
     
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
@@ -213,22 +323,37 @@ def test_sm_root1(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sc
         assert cp.array_equal(memory, cp.array([root_rank + 1] * nelem_total, dtype=cp.int32))
     else:
         assert cp.array_equal(memory, cp.ones(nelem_total, dtype=cp.int32))
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
-def test_sm_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_root2("
+                f"mpi_group.comm.size={mpi_group.comm.size}, "
+                f"nelem_per_send={nelem_per_send}, "
+                f"nelem_total={nelem_total}, "
+                f"scratch_size={scratch_size}, "
+                f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    proxy_service = ProxyService()
 
     root_rank = group.nranks - 1
+    recv_sm_channels, send_sm_channels, recv_sm_scratches = {}, {}, {}
+    recv_proxy_channels, send_proxy_channels, recv_proxy_scratches = {}, {}, {}
     if group.my_rank < root_rank:
         # reduce at tb0, broadcast at tb1
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_sm_scratches = {}
-        recv_sm_channels = {1: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
-        send_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        if group.my_rank // sm_node_size == root_rank // sm_node_size:
+            recv_sm_channels = {1: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+            send_sm_channels = {0: [group.make_sm_channel(memory, connections[root_rank], root_rank)]}
+        else:
+            recv_proxy_channels = {1: [group.make_proxy_channel(proxy_service, memory, connections[root_rank], root_rank)]}
+            send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[root_rank], root_rank)]}
         node_types = {0: -1, 1: 1}
         data_offsets = {0: 0, 1: 0}
         data_sizes = {0: nelem_total, 1: nelem_total}
@@ -236,26 +361,40 @@ def test_sm_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sc
     elif group.my_rank == root_rank:
         # root
         memory = cp.ones(nelem_total, dtype=cp.int32)
-        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) 
-                                 for _ in range(root_rank)]}
+
+        sm_recv_peers = [dest for dest in range(root_rank) if group.my_rank // sm_node_size == dest // sm_node_size]
+        sm_send_peers = [dest for dest in range(root_rank) if group.my_rank // sm_node_size == dest // sm_node_size]
         # Creating send channels first because non-root nodes create recv channels first
         send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)
-                                for dest in range(root_rank)]}
-        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][dest], connections[dest], dest)
-                                for dest in range(root_rank)]}
+                                for dest in sm_send_peers]}
+        recv_sm_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) for _ in sm_recv_peers]}
+        recv_sm_channels = {0: [group.make_sm_channel(recv_sm_scratches[0][idx], connections[dest], dest)
+                                for idx, dest in enumerate(sm_recv_peers)]}
+        
+        proxy_recv_peers = [dest for dest in range(root_rank) if group.my_rank // sm_node_size != dest // sm_node_size]
+        proxy_send_peers = [dest for dest in range(root_rank) if group.my_rank // sm_node_size != dest // sm_node_size]
+        send_proxy_channels = {0: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)
+                                   for dest in proxy_send_peers]}
+        recv_proxy_scratches = {0: [cp.array([1000] * scratch_size, dtype=cp.int32) for _ in proxy_recv_peers]}
+        recv_proxy_channels = {0: [group.make_proxy_channel(proxy_service, recv_proxy_scratches[0][idx], connections[dest], dest)
+                                   for idx, dest in enumerate(proxy_recv_peers)]}
+
         node_types = {0: 0}
         data_offsets = {0: 0}
         data_sizes = {0: nelem_total}
         nblocks = 1
 
-    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, {}, {}, memory, data_offsets, 
-                            data_sizes, scratch_size, recv_sm_scratches, {}, node_types, 
+    kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                            memory, data_offsets, data_sizes, scratch_size,
+                            recv_sm_scratches, recv_proxy_scratches, node_types,
                             nelem_per_send, nblocks)
     
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     assert cp.array_equal(memory, cp.array([group.nranks] * nelem_total, dtype=cp.int32))
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(2, 8)
@@ -263,9 +402,21 @@ def test_sm_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, sc
 @pytest.mark.parametrize("allreduce_length", [96, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 4])
-def test_sm_allpair_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduce_length: int,
-                              scratch_size: int, ninstance: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_allpair_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduce_length: int,
+                           scratch_size: int, ninstance: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_allpair_allreduce("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"allreduce_length={allreduce_length}, "
+              f"scratch_size={scratch_size}, "
+              f"ninstance={ninstance}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
           for u, i in itertools.product(range(group.nranks), range(ninstance))}
@@ -277,16 +428,20 @@ def test_sm_allpair_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduc
                               k=ninstance,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allreduce_length=allreduce_length,
                               nelem_per_send=nelem_per_send,
-                              scratch_size=scratch_size)
+                              scratch_size=scratch_size,
+                              proxy_service=proxy_service)
 
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     expected = cp.array([sum(n + 1 for n in range(group.nranks))] * allreduce_length, dtype=cp.int32)
     assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(2, 8)
@@ -294,9 +449,21 @@ def test_sm_allpair_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduc
 @pytest.mark.parametrize("allreduce_length", [96, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 4])
-def test_sm_ring_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduce_length: int,
-                              scratch_size: int, ninstance: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_ring_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduce_length: int,
+                        scratch_size: int, ninstance: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_ring_allreduce("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"allreduce_length={allreduce_length}, "
+              f"scratch_size={scratch_size}, "
+              f"ninstance={ninstance}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {(u, i): [[((u + d) % group.nranks, (u + d + 1) % group.nranks)]
                    for d in range(group.nranks - 1)]
@@ -309,24 +476,39 @@ def test_sm_ring_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduce_l
                               k=ninstance,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allreduce_length=allreduce_length,
                               nelem_per_send=nelem_per_send,
-                              scratch_size=scratch_size)
+                              scratch_size=scratch_size,
+                              proxy_service=proxy_service)
 
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     expected = cp.array([sum(n + 1 for n in range(group.nranks))] * allreduce_length, dtype=cp.int32)
     assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()
 
 
 @pytest.mark.parametrize("nelem_per_send", [256, 512])
 @pytest.mark.parametrize("allreduce_length", [3 * 1024, 3 * 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [512, 1024])
-def test_sm_tree_allreduce(nelem_per_send: int, allreduce_length: int, scratch_size: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_tree_allreduce(nelem_per_send: int, allreduce_length: int, scratch_size: int,
+                        sm_node_size: int):
     mpi_group = MpiGroup(list(range(8)))
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_tree_allreduce("
+              f"nelem_per_send={nelem_per_send}, "
+              f"allreduce_length={allreduce_length}, "
+              f"scratch_size={scratch_size}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {}
     Cs = {}
@@ -343,26 +525,41 @@ def test_sm_tree_allreduce(nelem_per_send: int, allreduce_length: int, scratch_s
                               k=3,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allreduce_length=allreduce_length,
                               nelem_per_send=nelem_per_send,
-                              scratch_size=scratch_size)
+                              scratch_size=scratch_size,
+                              proxy_service=proxy_service)
 
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     expected = cp.array([sum(n + 1 for n in range(group.nranks))] * allreduce_length, dtype=cp.int32)
     assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()
 
 
 @pytest.mark.parametrize("nelem_per_send", [256, 512])
 @pytest.mark.parametrize("allreduce_length", [3 * 1024, 3 * 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [512, 1024])
 @pytest.mark.parametrize("iters", [2, 10])
-def test_sm_multrun_allreduce(nelem_per_send: int, allreduce_length: int, scratch_size: int,
-                              iters: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_multrun_allreduce(nelem_per_send: int, allreduce_length: int, scratch_size: int,
+                           iters: int, sm_node_size: int):
     mpi_group = MpiGroup(list(range(8)))
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_multrun_allreduce("
+              f"nelem_per_send={nelem_per_send}, "
+              f"allreduce_length={allreduce_length}, "
+              f"scratch_size={scratch_size}, "
+              f"iters={iters}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {}
     Cs = {}
@@ -379,29 +576,45 @@ def test_sm_multrun_allreduce(nelem_per_send: int, allreduce_length: int, scratc
                               k=3,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allreduce_length=allreduce_length,
                               nelem_per_send=nelem_per_send,
-                              scratch_size=scratch_size)
+                              scratch_size=scratch_size,
+                              proxy_service=proxy_service)
 
     expected = [cp.array([group.nranks ** (i + 1)] * allreduce_length, dtype=cp.int32)
                 for i in range(iters)]
 
+    proxy_service.start_proxy()
     for i in range(iters):
         group.barrier()  # Add barrier here to prevent initialization overwrites the data
                          # another gpu is still getting in previous iter.
         kernel()
+        cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
         assert cp.array_equal(memory, expected[i])
         cp.cuda.runtime.deviceSynchronize()
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("allgather_length", [96, 2 ** 20])
 @pytest.mark.parametrize("ninstance", [1, 4])
-def test_sm_allpair_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_length: int,
-                              ninstance: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_allpair_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_length: int,
+                           ninstance: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_allpair_allgather("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"allgather_length={allgather_length}, "
+              f"ninstance={ninstance}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
           for u, i in itertools.product(range(group.nranks), range(ninstance))}
@@ -413,25 +626,40 @@ def test_sm_allpair_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgathe
                               k=ninstance,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allgather_length=allgather_length,
-                              nelem_per_send=nelem_per_send)
+                              nelem_per_send=nelem_per_send,
+                              proxy_service=proxy_service)
 
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     expected = cp.array([off // (allgather_length // group.nranks) + 1
                          for off in range(allgather_length)], dtype=cp.int32)
     assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()
 
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("allgather_length", [96, 2 ** 20])
 @pytest.mark.parametrize("ninstance", [1, 4])
-def test_sm_ring_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_length: int,
-                           ninstance: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_ring_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_length: int,
+                        ninstance: int, sm_node_size: int):
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_ring_allgather("
+              f"mpi_group.comm.size={mpi_group.comm.size}, "
+              f"nelem_per_send={nelem_per_send}, "
+              f"allgather_length={allgather_length}, "
+              f"ninstance={ninstance}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {(u, i): [[((u + d) % group.nranks, (u + d + 1) % group.nranks)]
                    for d in range(group.nranks - 1)]
@@ -444,23 +672,36 @@ def test_sm_ring_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_l
                               k=ninstance,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allgather_length=allgather_length,
-                              nelem_per_send=nelem_per_send)
+                              nelem_per_send=nelem_per_send,
+                              proxy_service=proxy_service)
 
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     expected = cp.array([off // (allgather_length // group.nranks) + 1
                          for off in range(allgather_length)], dtype=cp.int32)
     assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()
 
 
 @pytest.mark.parametrize("nelem_per_send", [256, 512])
 @pytest.mark.parametrize("allgather_length", [3 * 1024, 3 * 2 ** 20])
-def test_sm_tree_allgather(nelem_per_send: int, allgather_length: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_tree_allgather(nelem_per_send: int, allgather_length: int, sm_node_size: int):
     mpi_group = MpiGroup(list(range(8)))
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_tree_allgather("
+              f"nelem_per_send={nelem_per_send}, "
+              f"allgather_length={allgather_length}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {}
     Cs = {}
@@ -477,24 +718,39 @@ def test_sm_tree_allgather(nelem_per_send: int, allgather_length: int):
                               k=3,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allgather_length=allgather_length,
-                              nelem_per_send=nelem_per_send)
+                              nelem_per_send=nelem_per_send,
+                              proxy_service=proxy_service)
 
+    proxy_service.start_proxy()
     group.barrier()
     kernel()
     cp.cuda.runtime.deviceSynchronize()
     expected = cp.array([off // (allgather_length // group.nranks) + 1
                          for off in range(allgather_length)], dtype=cp.int32)
     assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()
 
 
 @pytest.mark.parametrize("nelem_per_send", [256, 512])
 @pytest.mark.parametrize("allgather_length", [3 * 1024, 3 * 2 ** 20])
 @pytest.mark.parametrize("iters", [2, 10])
-def test_sm_multrun_allgather(nelem_per_send: int, allgather_length: int, iters: int):
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_multrun_allgather(nelem_per_send: int, allgather_length: int, iters: int,
+                           sm_node_size: int):
     mpi_group = MpiGroup(list(range(8)))
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_multrun_allgather("
+              f"nelem_per_send={nelem_per_send}, "
+              f"allgather_length={allgather_length}, "
+              f"iters={iters}, "
+              f"sm_node_size={sm_node_size})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
 
     Ts = {}
     Cs = {}
@@ -514,14 +770,20 @@ def test_sm_multrun_allgather(nelem_per_send: int, allgather_length: int, iters:
                               k=3,
                               group=group,
                               connections=connections,
+                              connection_types=connection_types,
                               data=memory,
                               allgather_length=allgather_length,
-                              nelem_per_send=nelem_per_send)
+                              nelem_per_send=nelem_per_send,
+                              proxy_service=proxy_service)
 
-
+    proxy_service.start_proxy()
     for _ in range(iters):
-        group.barrier()
         cp.copyto(memory, init_data)
-        kernel()
-        assert cp.array_equal(memory, expected)
         cp.cuda.runtime.deviceSynchronize()
+        group.barrier()  # Prevent remote kernel call from writing to memory
+                         # before `cp.copyto(memory, init_data)` is executed.
+        kernel()
+        cp.cuda.runtime.deviceSynchronize()  # Causing fifo_device assertion failure
+                                             # if commented out or moved after `cp.array_equal`
+        assert cp.array_equal(memory, expected)
+    proxy_service.stop_proxy()

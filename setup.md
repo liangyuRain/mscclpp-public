@@ -169,3 +169,7 @@ KERNEL_FILE=pipeline_kernel_simplified.cu
              size(B)            time(us)         algbw(GB/s)
           1073741824            10135.55               98.66
 ```
+- With proxy channels, it is observed that when `k` or `ninstance` is too large (AR: k>4, AG: k>8), both allreduce and allgather can hang. Allgather generally hangs at larger `k`, probably because it requires less number of channels.
+- For proxy channels, increasing the number of parallel channels does not improve performance; however, for sm channels, it does.
+- To implement `k` sm channels per proxy channel, we can let `k` sm channels use the same scratch buffer but writing to different offsets to simplify logic.
+- Ensure if `connection_types[b]=x` at `a`, then `connection_types[a]=x` at `b`.

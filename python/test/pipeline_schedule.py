@@ -220,28 +220,40 @@ IB_TRANSPORTS = {
 }
 
 
-def make_recv_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, connections: dict,
-                       recv_peers: list, send_peers: list, data: cp.ndarray, scratch_size: int):
+def make_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, connections: dict,
+                  connection_types: dict, recv_peers: list, send_peers: list, data: cp.ndarray,
+                  scratch_size: int):
+    recv_peers, send_peers = list(recv_peers), list(send_peers)
     recv_sm_channels, recv_proxy_channels = [], []
     recv_sm_scratches, recv_proxy_scratches = ([], []) if scratch_size is not None else (None, None)
     for dest in recv_peers:
         connect = connections[dest]
         recv_buf = cp.zeros(scratch_size, dtype=cp.int32) if scratch_size is not None else data
-        if connect.transport() == Transport.CudaIpc:
+        if connection_types[dest] == "sm":
+            assert connect.transport() == Transport.CudaIpc
             if scratch_size is not None:
                 recv_sm_scratches.append(recv_buf)
             recv_sm_channels.append(group.make_sm_channel(recv_buf, connect, dest))
-        elif connect.transport() in IB_TRANSPORTS:
+        elif connection_types[dest] == "proxy":
+            assert connect.transport() == Transport.CudaIpc or connect.transport() in IB_TRANSPORTS
             if scratch_size is not None:
                 recv_proxy_scratches.append(recv_buf)
             recv_proxy_channels.append(
                 group.make_proxy_channel(proxy_service, recv_buf, connect, dest))
         else:
             assert False
+    for dest in send_peers:
+        tran = connections[dest].transport()
+        if connection_types[dest] == "sm":
+            assert tran == Transport.CudaIpc
+        elif connection_types[dest] == "proxy":
+            assert tran == Transport.CudaIpc or tran in IB_TRANSPORTS
+        else:
+            assert False
     send_sm_channels = [group.make_sm_channel(data, connections[dest], dest) 
-                        for dest in send_peers if connections[dest].transport() == Transport.CudaIpc]
+                        for dest in send_peers if connection_types[dest] == "sm"]
     send_proxy_channels = [group.make_proxy_channel(proxy_service, data, connections[dest], dest) 
-                           for dest in send_peers if connections[dest].transport() in IB_TRANSPORTS]
+                           for dest in send_peers if connection_types[dest] == "proxy"]
     if scratch_size is not None:
         return (recv_sm_channels, send_sm_channels,
                 recv_proxy_channels, send_proxy_channels,
@@ -252,16 +264,20 @@ def make_recv_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyServic
 
 
 def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
-                     connections: dict, data: cp.ndarray, allreduce_length: int,
-                     nelem_per_send: int, scratch_size: int,
+                     connections: dict, connection_types: dict, data: cp.ndarray,
+                     allreduce_length: int, nelem_per_send: int, scratch_size: int,
                      proxy_service: ProxyService = None):
     assert allreduce_length % (k * group.nranks) == 0
     assert scratch_size >= nelem_per_send
     assert allreduce_length == data.shape[0]
-    for connect in connections.values():
+    for dest, connect in connections.items():
         transport = connect.transport()
+        connect_type = connection_types[dest]
+        assert connect_type in ["sm", "proxy"]
         assert (transport == Transport.CudaIpc or 
-                (transport in IB_TRANSPORTS and proxy_service is not None))
+                (transport in IB_TRANSPORTS and
+                 proxy_service is not None and
+                 connect_type == "proxy"))
 
     chunk_starts = {}
     chunk_counts = {}
@@ -301,9 +317,9 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             (recv_sm_channels[tb_id], send_sm_channels[tb_id],
              recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
              recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
-                make_recv_channels(group=group, proxy_service=proxy_service, connections=connections,
-                                   recv_peers=children, send_peers=children, data=data,
-                                   scratch_size=scratch_size)
+                make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                              connection_types=connection_types, recv_peers=children,
+                              send_peers=children, data=data, scratch_size=scratch_size)
             node_types[tb_id] = 0
             data_offsets[tb_id] = offset
             data_sizes[tb_id] = nelem_per_chunk * Cs[u, i]
@@ -314,9 +330,10 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             (recv_sm_channels[tb_id], send_sm_channels[tb_id],
              recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
              recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
-                make_recv_channels(group=group, proxy_service=proxy_service, connections=connections,
-                                   recv_peers=children, send_peers=test_G.predecessors(group.my_rank),
-                                   data=data, scratch_size=scratch_size)
+                make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                              connection_types=connection_types, recv_peers=children,
+                              send_peers=list(test_G.predecessors(group.my_rank)),
+                              data=data, scratch_size=scratch_size)
             assert len(send_sm_channels[tb_id]) + len(send_proxy_channels[tb_id]) <= 1
             node_types[tb_id] = -1
             data_offsets[tb_id] = offset
@@ -327,9 +344,10 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             nblocks += 1
             (recv_sm_channels[tb_id], send_sm_channels[tb_id],
              recv_proxy_channels[tb_id], send_proxy_channels[tb_id]) = \
-                make_recv_channels(group=group, proxy_service=proxy_service, connections=connections,
-                                   recv_peers=test_G.predecessors(group.my_rank), send_peers=children,
-                                   data=data, scratch_size=None)
+                make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                              connection_types=connection_types,
+                              recv_peers=list(test_G.predecessors(group.my_rank)),
+                              send_peers=children, data=data, scratch_size=None)
             assert len(recv_sm_channels[tb_id]) + len(recv_proxy_channels[tb_id]) <= 1
             node_types[tb_id] = 1
             data_offsets[tb_id] = offset
@@ -347,14 +365,19 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
 
 def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
-                     connections: dict, data: cp.ndarray, allgather_length: int,
-                     nelem_per_send: int, proxy_service: ProxyService = None):
+                     connections: dict, connection_types: dict, data: cp.ndarray,
+                     allgather_length: int, nelem_per_send: int,
+                     proxy_service: ProxyService = None):
     assert allgather_length % (k * group.nranks) == 0
     assert allgather_length == data.shape[0]
-    for connect in connections.values():
+    for dest, connect in connections.items():
         transport = connect.transport()
+        connect_type = connection_types[dest]
+        assert connect_type in ["sm", "proxy"]
         assert (transport == Transport.CudaIpc or 
-                (transport in IB_TRANSPORTS and proxy_service is not None))
+                (transport in IB_TRANSPORTS and
+                 proxy_service is not None and
+                 connect_type == "proxy"))
 
     chunk_starts = {}
     chunk_counts = {}
@@ -392,9 +415,10 @@ def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         nblocks += 1
         (recv_sm_channels[tb_id], send_sm_channels[tb_id],
          recv_proxy_channels[tb_id], send_proxy_channels[tb_id]) = \
-         make_recv_channels(group=group, proxy_service=proxy_service, connections=connections,
-                            recv_peers=test_G.predecessors(group.my_rank), send_peers=children,
-                            data=data, scratch_size=None)
+         make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                       connection_types=connection_types,
+                       recv_peers=list(test_G.predecessors(group.my_rank)),
+                       send_peers=children, data=data, scratch_size=None)
         assert len(recv_sm_channels[tb_id]) + len(recv_proxy_channels[tb_id]) <= 1
         node_types[tb_id] = 1
         data_offsets[tb_id] = offset
