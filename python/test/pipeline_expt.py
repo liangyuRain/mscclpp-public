@@ -20,12 +20,13 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
     proxy_service = ProxyService()
     if group.my_rank == 0:
-        print("#" * 25 + " Allreduce " + "#" * 25)
-        print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size},\n"
-              f"check_iters={check_iters}, iters={iters}")
+        print("#" * 45 + " Allreduce " + "#" * 45)
+        print(f"nranks={group.nranks}")
+        print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
+        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
-        print_row("size(B)", "time(us)", "algbw(GB/s)")
+        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
@@ -58,14 +59,18 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
         group.barrier()
         res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
+        avg_time = np.average(res)  # seconds
+        min_time = np.min(res)
 
         proxy_service.stop_proxy()
 
         size = length * 4
         if group.my_rank == 0:
             print_row(size, 
-                      f"{time_span * 1e6:.2f}", 
-                      f"{(size / 2 ** 30) / time_span:.2f}")
+                      f"{avg_time * 1e6:.2f}",
+                      f"{min_time * 1e6:.2f}",
+                      f"{(size / 2 ** 30) / avg_time:.2f}",
+                      f"{(size / 2 ** 30) / min_time:.2f}")
 
 
 def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
@@ -74,12 +79,13 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   warmup_iters: int = 10, iters: int = 10):
     proxy_service = ProxyService()
     if group.my_rank == 0:
-        print("#" * 25 + " Allgather " + "#" * 25)
-        print(f"k={k}, nelem_per_send={nelem_per_send},\n"
-              f"check_iters={check_iters}, iters={iters}")
+        print("#" * 45 + " Allgather " + "#" * 45)
+        print(f"nranks={group.nranks}")
+        print(f"k={k}, nelem_per_send={nelem_per_send}")
+        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
-        print_row("size(B)", "time(us)", "algbw(GB/s)")
+        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
@@ -112,14 +118,18 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
         group.barrier()
         res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
+        avg_time = np.average(res)  # seconds
+        min_time = np.min(res)
 
         proxy_service.stop_proxy()
 
         size = length * 4
         if group.my_rank == 0:
             print_row(size, 
-                      f"{time_span * 1e6:.2f}", 
-                      f"{(size / 2 ** 30) / time_span:.2f}")
+                      f"{avg_time * 1e6:.2f}", 
+                      f"{min_time * 1e6:.2f}",
+                      f"{(size / 2 ** 30) / avg_time:.2f}",
+                      f"{(size / 2 ** 30) / min_time:.2f}")
 
 
 if __name__ == "__main__":
