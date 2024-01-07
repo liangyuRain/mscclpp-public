@@ -135,39 +135,43 @@ include_dir = os.path.join(self._current_file_dir, "../../include")
 Originally, running `test_pipeline` also has this error. However, after fixing the argument passed as `Plist` instead of pointer to reduce the size of arguments to the kernel, `test_pipeline` can be run properly.
 - At this commit, if change `pipeline_expt` to take best result instead of averge, perfomance numbers for `pipeline_kernel.cu`:
 ```shell
-######################### Allgather #########################
-k=8, nelem_per_send=1048576,
-check_iters=10, iters=50
+############################################# Allgather #############################################
+nranks=8
+k=4, nelem_per_send=262144
+check_iters=10, warmup_iters=10, iters=50
 KERNEL_FILE=pipeline_kernel.cu
 
-             size(B)            time(us)         algbw(GB/s)
-          1073741824             4032.51              247.98
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+          1073741824             4389.25             3998.72              227.83              250.08
 
-######################### Allreduce #########################
-k=16, nelem_per_send=32768, scratch_size=4194304,
-check_iters=10, iters=50
+############################################# Allreduce #############################################
+nranks=8
+k=4, nelem_per_send=32768, scratch_size=1048576
+check_iters=10, warmup_iters=10, iters=50
 KERNEL_FILE=pipeline_kernel.cu
 
-             size(B)            time(us)         algbw(GB/s)
-          1073741824             9385.98              106.54
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+          1073741824             8704.39             8636.42              114.88              115.79
 ```
-For `pipeline_kernel_simplified.cu`:
+For `pipeline_kernel_simplified.cu` (different `nelem_per_send`):
 ```shell
-######################### Allgather #########################
-k=8, nelem_per_send=1048576,
-check_iters=10, iters=50
+############################################# Allgather #############################################
+nranks=8
+k=4, nelem_per_send=262144
+check_iters=10, warmup_iters=10, iters=50
 KERNEL_FILE=pipeline_kernel_simplified.cu
 
-             size(B)            time(us)         algbw(GB/s)
-          1073741824             4032.51              247.98
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+          1073741824             4135.36             4000.77              241.82              249.95
 
-######################### Allreduce #########################
-k=16, nelem_per_send=32768, scratch_size=4194304,
-check_iters=10, iters=50
+############################################# Allreduce #############################################
+nranks=8
+k=4, nelem_per_send=131072, scratch_size=1048576
+check_iters=10, warmup_iters=10, iters=50
 KERNEL_FILE=pipeline_kernel_simplified.cu
 
-             size(B)            time(us)         algbw(GB/s)
-          1073741824            10135.55               98.66
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+          1073741824             8984.82             8914.94              111.30              112.17
 ```
 - With proxy channels, it is observed that when `k` or `ninstance` is too large (AR: k>4, AG: k>8), both allreduce and allgather can hang. Allgather generally hangs at larger `k`, probably because it requires less number of channels.
 - For proxy channels, increasing the number of parallel channels does not improve performance; however, for sm channels, it does.

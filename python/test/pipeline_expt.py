@@ -143,7 +143,7 @@ if __name__ == "__main__":
         return tp
 
     # allpairs
-    k = 8
+    k = 4
     Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
           for u, i in itertools.product(range(group.nranks), range(k))}
     Cs = {(u, i): 1 for u, i in itertools.product(range(group.nranks), range(k))}
@@ -154,7 +154,7 @@ if __name__ == "__main__":
                   connection_types={dest: channel_type(dest) for dest in connections},
                   # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
                   data_lengths=[2 ** 28],
-                  nelem_per_send=2 ** 20,
+                  nelem_per_send=2 ** 18,
                   warmup_iters=20,
                   iters=50)
 
@@ -162,7 +162,7 @@ if __name__ == "__main__":
         print()
 
     # ring
-    k = 16
+    k = 4
     Ts = {(u, i): [[((u + d) % group.nranks, (u + d + 1) % group.nranks)]
                    for d in range(group.nranks - 1)]
           for u, i in itertools.product(range(group.nranks), range(k))}
@@ -175,7 +175,7 @@ if __name__ == "__main__":
                   # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
                   data_lengths=[2 ** 28],
                   nelem_per_send=2 ** 15,
-                  scratch_size=2 ** 22,
+                  scratch_size=2 ** 20,
                   warmup_iters=20,
                   iters=50)
 
