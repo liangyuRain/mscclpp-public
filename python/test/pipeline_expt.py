@@ -56,9 +56,6 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
         for _ in range(check_iters):
             cp.copyto(data, init_data)
-            cp.cuda.runtime.deviceSynchronize()
-            group.barrier() # Prevent remote kernel call from writing to memory
-                            # before `cp.copyto(memory, init_data)` is executed.
             kernel()
             cp.cuda.runtime.deviceSynchronize()
             assert cp.array_equal(data, expected)
@@ -115,9 +112,6 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
         for _ in range(check_iters):
             cp.copyto(data, init_data)
-            cp.cuda.runtime.deviceSynchronize()
-            group.barrier() # Prevent remote kernel call from writing to memory
-                            # before `cp.copyto(memory, init_data)` is executed.
             kernel()
             cp.cuda.runtime.deviceSynchronize()
             assert cp.array_equal(data, expected)
@@ -179,9 +173,6 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 
         for _ in range(check_iters):
             cp.copyto(data, init_data)
-            cp.cuda.runtime.deviceSynchronize()
-            group.barrier() # Prevent remote kernel call from writing to memory
-                            # before `cp.copyto(memory, init_data)` is executed.
             kernel()
             cp.cuda.runtime.deviceSynchronize()
             assert cp.array_equal(data[shard_begin: shard_end], expected)

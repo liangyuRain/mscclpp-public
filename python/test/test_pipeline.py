@@ -588,12 +588,9 @@ def test_multrun_allreduce(nelem_per_send: int, allreduce_length: int, scratch_s
 
     proxy_service.start_proxy()
     for i in range(iters):
-        group.barrier()  # Add barrier here to prevent initialization overwrites the data
-                         # another gpu is still getting in previous iter.
         kernel()
         cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
         assert cp.array_equal(memory, expected[i])
-        cp.cuda.runtime.deviceSynchronize()
     proxy_service.stop_proxy()
 
 
@@ -779,9 +776,6 @@ def test_multrun_allgather(nelem_per_send: int, allgather_length: int, iters: in
     proxy_service.start_proxy()
     for _ in range(iters):
         cp.copyto(memory, init_data)
-        cp.cuda.runtime.deviceSynchronize()
-        group.barrier()  # Prevent remote kernel call from writing to memory
-                         # before `cp.copyto(memory, init_data)` is executed.
         kernel()
         cp.cuda.runtime.deviceSynchronize()  # Causing fifo_device assertion failure
                                              # if commented out or moved after `cp.array_equal`

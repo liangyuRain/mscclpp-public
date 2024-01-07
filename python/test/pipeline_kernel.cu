@@ -18,12 +18,9 @@
 /// Syncronization: It is guaranteed that in allreduce and allgather, after the kernel finishes,
 /// the memory is safe to be written. However, the kernel immediately starts to write remote
 /// memory once launched. There are two cases:
-/// Allreduce - The kernel writes to remote scratch buffer in the beginning. As long as the remote
-/// peer has finished initializing scratch buffer, the write is safe.
-/// Allgather - The kernel writes to remote memory shard in the beginning. As long as the remote
-/// peer has finished initializing all shards except its own, the write is safe. If the remote
-/// needs to initialize all memory, then synchronization is needed to ensure remote initialization
-/// finishes before local kernel launch.
+/// Allreduce/ReduceScatter - The kernel writes to remote scratch buffer in the beginning.
+/// As long as the remote peer has finished initializing scratch buffer, the write is safe.
+/// Allgather - The kernel (proxy) waits for remote signal before writing to remote.
 ///
 /// @param recv_sm_channels SM channels for recv.
 /// @param send_sm_channels SM channels for send.
@@ -130,6 +127,7 @@ MSCCLPP_DEVICE_INLINE void
             const uint64_t d_start = data_start + loop * nelem_per_send;
             const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
             for (int i = tid; i < nsend_proxy; i += blockDim.x) {
+              if (loop == 0) send_proxy_channels[i].wait();
               send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
             }
           }
@@ -193,10 +191,12 @@ MSCCLPP_DEVICE_INLINE void
         const uint64_t d_start = data_start + sloop * nelem_per_send;
         const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
         for (int i = tid; i < nsend_proxy; i += blockDim.x) {
+          if (sloop == 0) send_proxy_channels[i].wait();
           send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
     } else {
+      if (tid == 0 && nrecv_proxy == 1) recv_proxy_channels[0].signal();
       int sloop = 0;
       __shared__ int ready;
       if (tid == 0) ready = 0;
@@ -220,11 +220,13 @@ MSCCLPP_DEVICE_INLINE void
           uint64_t d_start = data_start + sloop * nelem_per_send;
           uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
           if (nrecv_sm == 1) recv_sm_channels[0].get(d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
-          ++sloop;
           __syncthreads();
-          for (int i = tid; i < nsend_proxy; i += blockDim.x)
-            send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
           for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal();
+          for (int i = tid; i < nsend_proxy; i += blockDim.x) {
+            if (sloop == 0) send_proxy_channels[i].wait();
+            send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
+          }
+          ++sloop;
         } while (sloop < ready_loop);
       }
     }
