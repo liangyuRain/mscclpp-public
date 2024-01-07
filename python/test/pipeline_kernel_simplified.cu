@@ -170,6 +170,13 @@ MSCCLPP_DEVICE_INLINE void
     }
     if (node_type == 0) { // root
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].wait();
+    } else {
+      if (tid == 0 && nsend_sm == 1) {
+        int psends = pending_sends;
+        do {
+          psends -= send_sm_channels[0].poll(psends);
+        } while (psends > 0);
+      }
     }
   } else {
     // assert nrecv_sm + nrecv_proxy <= 1
