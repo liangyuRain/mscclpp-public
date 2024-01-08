@@ -46,22 +46,26 @@
 MSCCLPP_DEVICE_INLINE void 
     threadblockCall(mscclpp::SmChannelDeviceHandle* recv_sm_channels, mscclpp::SmChannelDeviceHandle* send_sm_channels,
                     mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channels, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channels,
-                    int** recv_scratches, const int nrecv_sm, const int nsend_sm, const int nrecv_proxy, const int nsend_proxy,
+                    int** recv_scratches, const int nsm_per_proxy,
+                    const int nrecv_sm, const int nsend_sm, const int nrecv_proxy, const int nsend_proxy,
                     const char node_type, const uint64_t data_start,
                     const uint64_t nelem_per_send, const uint64_t nelem_total, const uint64_t scratch_size, int* data) {
   const int tid = threadIdx.x;
 
   const int nloops = (nelem_total + nelem_per_send - 1) / nelem_per_send; // ceiling division
+  const int nelem_per_send_sm = nelem_per_send / nsm_per_proxy;
 
   if (node_type <= 0) {
     int reduced[N_PEERS] = {};
+    int sent[N_PEERS] = {};
     __shared__ int ready[N_PEERS];
-    __shared__ int pending_sends; // Only reduce node needs to track pending sends.
-                                  // Reduce node has at most one send peer.
+    __shared__ int pending_sends[N_PEERS]; // Only reduce node needs to track pending sends.
 
     #pragma unroll
-    for (int i = tid; i < N_PEERS; i += blockDim.x) ready[i] = 0;
-    if (tid == 0) pending_sends = 0;
+    for (int i = tid; i < N_PEERS; i += blockDim.x) {
+      ready[i] = 0;
+      pending_sends[i] = 0;
+    }
     __syncthreads();
 
     const int max_pending_sends = scratch_size / nelem_per_send;
@@ -86,11 +90,14 @@ MSCCLPP_DEVICE_INLINE void
           const int ready_loop = ready[i];
           if (reduced[i] < ready_loop){
             do {
-              const uint64_t s_start = (reduced[i] % max_pending_sends) * nelem_per_send;
-              const uint64_t d_start = data_start + reduced[i] * nelem_per_send;
-              const int diff = min(ready_loop - reduced[i], max_pending_sends - reduced[i] % max_pending_sends);
+              const bool sm_subchunk = (i < nrecv_sm && nsm_per_proxy > 1);
+              const uint64_t s_start = (reduced[i] % max_pending_sends) * nelem_per_send + 
+                  (sm_subchunk ? nelem_per_send_sm * (i % nsm_per_proxy) : 0);
+              const uint64_t d_start = data_start + reduced[i] * nelem_per_send + 
+                  (sm_subchunk ? nelem_per_send_sm * (i % nsm_per_proxy) : 0);
+              const int diff = (sm_subchunk ? 1 : min(ready_loop - reduced[i], max_pending_sends - reduced[i] % max_pending_sends));
 
-              const uint64_t nElem = min(nelem_per_send * diff, data_start + nelem_total - d_start);
+              const uint64_t nElem = (sm_subchunk ? nelem_per_send_sm, min(nelem_per_send * diff, data_start + nelem_total - d_start));
               const uint64_t nElem4 = nElem / 4;
               const uint64_t nLastElem = nElem % 4;
 
@@ -135,32 +142,53 @@ MSCCLPP_DEVICE_INLINE void
           }
           sloop = rloop;
         } else {
-          // assert nsend_sm + nsend_proxy == 1
-          int psends = pending_sends;
-          if (psends == max_pending_sends) {
-            if (tid == 0) pending_sends -= (nsend_sm == 1 ? send_sm_channels[0].poll(psends) : 
-                                                            send_proxy_channels[0].poll(psends));
-            __syncthreads();
-            psends = pending_sends;
-            if (psends == max_pending_sends) {
-              __syncthreads();
-              continue;
+          // assert (nsend_sm == nsm_per_proxy && nsend_proxy == 0) || (nsend_sm == 0 && nsend_proxy == 1)
+          if (nsend_sm > 0) { // assert nsend_sm == nsm_per_proxy && nsend_proxy == 0
+            bool readyToSend = false;
+            for (int i = tid; i < nsm_per_proxy; i += blockDim.x) {
+              int psends = pending_sends[i];
+              int update = send_sm_channels[i].poll(psends);
+              if (update > 0) {
+                psends -= update;
+                pending_sends[i] = psends;
+              }
+              if (psends < max_pending_sends && sent[i] < rloop) readyToSend = true;
             }
-          }
-          
-          // pipeline send: ensure one send (one nelem_per_send) one signal
-          if (nsend_sm == 1) {
-            do {
-              uint64_t s_start = (sloop % max_pending_sends) * nelem_per_send;
-              uint64_t d_start = data_start + sloop * nelem_per_send;
-              uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-              send_sm_channels[0].put(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
-              ++sloop;
-              ++psends;
+            if (!__syncthreads_or(readyToSend)) continue;
+
+            sloop = rloop;
+            for (int i = 0; i < nsm_per_proxy; ++i) {
+              if (sent[i] == rloop) continue;
+              int psends = pending_sends[i];
+              if (psends < max_pending_sends) {
+                do {
+                  uint64_t s_start = (sent[i] % max_pending_sends) * nelem_per_send + nelem_per_send_sm * i;
+                  uint64_t d_start = data_start + sent[i] * nelem_per_send + nelem_per_send_sm * i;
+                  uint64_t size = min(nelem_per_send_sm, data_start + nelem_total - d_start);
+                  send_sm_channels[i].put(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
+                  ++psends;
+                  ++sent[i];
+                  __syncthreads();
+                  if (tid == 0) send_sm_channels[i].signal();
+                } while (psends < max_pending_sends && sent[i] < rloop);
+                if (tid == 0) pending_sends[i] = psends;
+              }
+              if (sent[i] < sloop) sloop = sent[i];
+            }
+            __syncthreads();
+          } else { // assert nsend_sm == 0 && nsend_proxy == 1
+            int psends = pending_sends[0];
+            if (psends == max_pending_sends) {
+              if (tid == 0) pending_sends[0] -= send_proxy_channels[0].poll(psends);
               __syncthreads();
-              if (tid == 0) send_sm_channels[0].signal();
-            } while (psends < max_pending_sends && sloop < rloop);
-          } else { // nsend_proxy == 1
+              psends = pending_sends[0];
+              if (psends == max_pending_sends) {
+                __syncthreads();
+                continue;
+              }
+            }
+            
+            // pipeline send: ensure one send (one nelem_per_send) one signal
             do {
               uint64_t s_start = (sloop % max_pending_sends) * nelem_per_send;
               uint64_t d_start = data_start + sloop * nelem_per_send;
@@ -169,9 +197,9 @@ MSCCLPP_DEVICE_INLINE void
               ++sloop;
               ++psends;
             } while (psends < max_pending_sends && sloop < rloop);
+            if (tid == 0) pending_sends[0] = psends;
+            __syncthreads();
           }
-          if (tid == 0) pending_sends = psends;
-          __syncthreads();
         }
       }
     }
@@ -179,7 +207,6 @@ MSCCLPP_DEVICE_INLINE void
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].wait();
     }
   } else {
-    // assert nrecv_sm + nrecv_proxy <= 1
     if (nrecv_sm == 0 && nrecv_proxy == 0) {
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(nloops);
       for (int sloop = 0; sloop < nloops; ++sloop) {
@@ -189,10 +216,19 @@ MSCCLPP_DEVICE_INLINE void
           send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
-    } else {
+    } else { // assert (nrecv_sm == nsm_per_proxy && nrecv_proxy == 0) || (nrecv_sm == 0 && nrecv_proxy == 1)
       int sloop = 0;
-      __shared__ int ready;
-      if (tid == 0) ready = 0;
+      __shared__ int ready[N_PEERS];
+      for (int i = tid; i < N_PEERS; i += blockDim.x) ready[i] = 0;
+      __syncthreads();
+      if (nrecv_sm > 0) { // assert (nrecv_sm == nsm_per_proxy && nrecv_proxy == 0)
+        while (sloop < nloops) {
+          
+        }
+      } else { // assert (nrecv_sm == 0 && nrecv_proxy == 1)
+
+      }
+
       while (sloop < nloops) {
         if (tid == 0) {
           int ready_loop = sloop;
