@@ -196,3 +196,4 @@ KERNEL_FILE=pipeline_kernel_simplified.cu
 - To implement `k` sm channels per proxy channel, we can let `k` sm channels use the same scratch buffer but writing to different offsets to simplify logic.
 - Ensure if `connection_types[b]=x` at `a`, then `connection_types[a]=x` at `b`.
 - Proxy channel (within a node at least) requires higher `nelem_per_send` (1MB?); otherwise, performance is extremely poor.
+- Number of proxy channels: [issue](https://github.com/microsoft/mscclpp/issues/242)

@@ -54,6 +54,7 @@ class PipelineKernel:
         n_send_sm_channels = sum(len(l) for l in send_sm_channels.values())
         n_recv_proxy_channels = sum(len(l) for l in recv_proxy_channels.values())
         n_send_proxy_channels = sum(len(l) for l in send_proxy_channels.values())
+        assert n_recv_proxy_channels + n_send_proxy_channels <= 128, "see https://github.com/microsoft/mscclpp/issues/242"
         file_dir = os.path.dirname(os.path.abspath(__file__))
         self._kernel = KernelBuilder(
             file=KERNEL_FILE,
