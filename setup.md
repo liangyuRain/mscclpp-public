@@ -1,47 +1,24 @@
 # Setup on Lambda Machine
-- BBN's lambda machine has cuda 12.2. Thus, the base docker image under `mscclpp-public/docker` has to be changed to `FROM nvidia/cuda:12.2.0-devel-ubuntu20.04`. The following env variables are also required for docker image on lambda machine to have internet access:
-```docker
-ENV HTTP_PROXY="http://proxy.bbn.com:3128"
-ENV HTTPS_PROXY="http://proxy.bbn.com:3128"
-ENV http_proxy="http://proxy.bbn.com:3128"
-ENV https_proxy="http://proxy.bbn.com:3128"
+- Clone from `git@github.com:liangyuRain/mscclpp-public.git` using SSH and set the ssh key by
 ```
-- Build an image called `mscclpp-public`: 
-```shell
-docker build -t mscclpp-public -f mscclpp-public/docker/base-x-cuda12.2.dockerfile .
+git config --add --local core.sshCommand 'ssh -i /home/azureuser/liangyu/.ssh/id_ed25519'
 ```
-- Create a container named `mscclpp-public` using the image `mscclpp-public` we just built:
+- Machine has cuda 12.2. Thus, the base docker image under `mscclpp-public/docker` has to be changed to `FROM nvidia/cuda:12.2.0-devel-ubuntu20.04`.
+- Build an image called `liangyu-mscclpp`: 
 ```shell
-docker run --env HTTP_PROXY="http://proxy.bbn.com:3128" \
-           --env HTTPS_PROXY="http://proxy.bbn.com:3128" \
-           --env http_proxy="http://proxy.bbn.com:3128" \
-           --env https_proxy="http://proxy.bbn.com:3128" -d --name mscclpp --gpus all mscclpp tail -f /dev/null
+docker build -t liangyu-mscclpp -f mscclpp-public/docker/base-x-cuda12.2.dockerfile .
 ```
+- Create a container named `liangyu-mscclpp` using the image `liangyu-mscclpp` we just built:
 ```shell
-docker run --ulimit memlock=-1:-1 \
-           --device=/dev/infiniband/uverbs0 \
-           --device=/dev/infiniband/uverbs1 \
-           --device=/dev/infiniband/uverbs2 \
-           --device=/dev/infiniband/uverbs3 \
-           --device=/dev/infiniband/uverbs4 \
-           --device=/dev/infiniband/uverbs5 \
-           --device=/dev/infiniband/uverbs6 \
-           --device=/dev/infiniband/uverbs7 \
-           --device=/dev/infiniband/uverbs8 \
-           --device=/dev/infiniband/uverbs9 \
-           --device=/dev/infiniband/rdma_cm \
-           --env HTTP_PROXY="http://proxy.bbn.com:3128" \
-           --env HTTPS_PROXY="http://proxy.bbn.com:3128" \
-           --env http_proxy="http://proxy.bbn.com:3128" \
-           --env https_proxy="http://proxy.bbn.com:3128" -d --name mscclpp-public --gpus all mscclpp-public tail -f /dev/null
+docker run --gpus all -it --privileged --net=host --ipc=host -p 81:5001 -d --name liangyu-mscclpp --entrypoint bash liangyu-mscclpp
 ```
 - Copy `mscclpp-public` into the container:
 ```shell
-docker cp mscclpp-public/ mscclpp-public:/root/
+docker cp mscclpp-public/ liangyu-mscclpp:/root/
 ```
 - Enter the container:
 ```shell
-docker exec -it mscclpp-public bash
+docker exec -it liangyu-mscclpp bash
 ```
 - Install miniconda:
 ```shell

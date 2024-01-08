@@ -1,12 +1,6 @@
 ARG BASE_IMAGE=nvidia/cuda:12.2.0-devel-ubuntu20.04
 FROM ${BASE_IMAGE}
 
-
-ENV HTTP_PROXY="http://proxy.bbn.com:3128"
-ENV HTTPS_PROXY="http://proxy.bbn.com:3128"
-ENV http_proxy="http://proxy.bbn.com:3128"
-ENV https_proxy="http://proxy.bbn.com:3128"
-
 LABEL maintainer="MSCCL++"
 LABEL org.opencontainers.image.source https://github.com/microsoft/mscclpp
 
