@@ -1,4 +1,9 @@
-# Setup on Lambda Machine
+# Setup
+- A100 machines:
+```
+a100-srg-0 10.0.0.5
+10.0.0.4
+```
 - Clone from `git@github.com:liangyuRain/mscclpp-public.git` using SSH and set the ssh key by
 ```
 git config --add --local core.sshCommand 'ssh -i /home/azureuser/liangyu/.ssh/id_ed25519'
@@ -97,6 +102,13 @@ to
 const mscclpp::TransportFlags allTransports = mscclpp::Transport::CudaIpc;
 ```
 **There are three positions in the file where such flags exist.**
+
+# Run mscclpp benchmark
+- Make sure `nccl` is installed: `sudo apt-get install libnccl2`
+- Run
+```shell
+mpirun -np 8 python allreduce_bench.py
+```
 
 # Notes
 - Error `ibv_create_cq(cqe=4096) failed: Cannot allocate memory` is caused by not setting `max locked memory` to `unlimited`. One can check by running `ulimit -a`. The solution is to add `--ulimit memlock=-1:-1` when `docker run`. There seems to be a discrepancy between host and docker container in `ulimit -a` by default.
