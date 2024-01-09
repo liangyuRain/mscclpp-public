@@ -32,7 +32,7 @@ wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/
 bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
 ~/miniconda3/bin/conda init bash
 ```
-- Create a conda environment:
+- Create a conda environment (for mpirun, one may skip this):
 ```shell
 conda create --name mscclpp python=3.8
 conda activate mscclpp
@@ -50,6 +50,7 @@ pip install cuda-python==12.2.0
 pip install cupy-cuda12x cmake==3.25.0
 conda install networkx
 ```
+- OpenMPI is recommended. One can uninstall and `conda install mpi4py` without `conda-forge` to install openmpi.
 
 # Build msccl++
 - Remove, create, and move to `build` folder under `mscclpp-public`.
@@ -109,6 +110,26 @@ const mscclpp::TransportFlags allTransports = mscclpp::Transport::CudaIpc;
 ```shell
 mpirun -np 8 python allreduce_bench.py
 ```
+
+# Setup multinode mpirun
+- Inside both docker containers, open a port by running:
+```shell
+mkdir /run/sshd
+/usr/sbin/sshd -p 20000
+```
+- Add node 1's ssh key into both nodes' `authorized_keys`.
+- Edit `.ssh/config` at node 1 to direct all ssh to port 20000:
+```
+Host *
+Port 20000
+```
+- If ssh still asks for password, try another port.
+- Create hostfile `hosts.txt`
+```
+10.0.0.5:8
+10.0.0.4:8
+```
+- `mpirun` should now specify `-hostfile /root/hosts.txt`.
 
 # Notes
 - Error `ibv_create_cq(cqe=4096) failed: Cannot allocate memory` is caused by not setting `max locked memory` to `unlimited`. One can check by running `ulimit -a`. The solution is to add `--ulimit memlock=-1:-1` when `docker run`. There seems to be a discrepancy between host and docker container in `ulimit -a` by default.
