@@ -126,10 +126,10 @@ Port 20000
 - If ssh still asks for password, try another port.
 - Create hostfile `hosts.txt`
 ```
-10.0.0.5:8
-10.0.0.4:8
+10.0.0.5 slots=8
+10.0.0.4 slots=8
 ```
-- `mpirun` should now specify `-hostfile /root/hosts.txt`.
+- `mpirun` should now specify `--hostfile /root/hosts.txt`.
 
 # Notes
 - Error `ibv_create_cq(cqe=4096) failed: Cannot allocate memory` is caused by not setting `max locked memory` to `unlimited`. One can check by running `ulimit -a`. The solution is to add `--ulimit memlock=-1:-1` when `docker run`. There seems to be a discrepancy between host and docker container in `ulimit -a` by default.
