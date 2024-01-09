@@ -2,6 +2,7 @@ import struct
 import cupy as cp
 import networkx as nx
 import os
+import tempfile
 
 from mscclpp import (
     ProxyService,
@@ -24,6 +25,65 @@ def connect_nvlink(group: mscclpp_comm.CommGroup, remote_nghrs: list):
     tran = Transport.CudaIpc
     connections = group.make_connection(remote_nghrs, tran)
     return connections
+
+
+class CupyKernelBuilder:
+    kernel_map: dict = {}
+
+    def get_key(self, kernel_name, macro_dict):
+        return kernel_name + "-".join(f"{key}={macro_dict[key]}" for key in sorted(macro_dict))
+
+    def __init__(self, file: str, kernel_name: str, file_dir: str = None, macro_dict: dict = {}):
+        kernel_key = self.get_key(kernel_name, macro_dict)
+        if kernel_key in self.kernel_map:
+            self._kernel = self.kernel_map[kernel_key]
+            return
+        self._tempdir = tempfile.TemporaryDirectory(suffix=f"{os.getpid()}")
+        self._current_file_dir = file_dir if file_dir else os.path.dirname(os.path.abspath(__file__))
+        self.macros = None
+        if file_dir:
+            self.macros = ["-D{}={}".format(macro, value) for macro, value in macro_dict.items()]
+        device = cp.cuda.Device()
+        device_id = device.id
+        ptx = self._compile_cuda(os.path.join(self._current_file_dir, file), f"{kernel_name}.ptx", device_id)
+        self._kernel = Kernel(ptx, kernel_name, device_id)
+        self.kernel_map[kernel_key] = self._kernel
+
+    def _compile_cuda(self, source_file, output_file, device, std_version="c++17"):
+        include_dir = os.path.join(self._current_file_dir, "../../include")
+        compute_capa = device.compute_capability
+        assert len(compute_capa) == 2
+        major, minor = compute_capa
+        cuda_home = os.environ.get("CUDA_HOME")
+        nvcc = os.path.join(cuda_home, "bin/nvcc") if cuda_home else "nvcc"
+        command = [
+            nvcc,
+            f"-std={std_version}",
+            "-ptx",
+            "-Xcompiler",
+            "-Wall,-Wextra",
+            f"-I{include_dir}",
+            f"{source_file}",
+            f"--gpu-architecture=compute_{major}{minor}",
+            f"--gpu-code=sm_{major}{minor},compute_{major}{minor}",
+            "-o",
+            f"{self._tempdir.name}/{output_file}",
+        ]
+        if self.macros:
+            command += self.macros
+        try:
+            subprocess.run(command, capture_output=True, text=True, check=True, bufsize=1)
+            return cp.RawModule(path=f"{self._tempdir.name}/{output_file}").get_function("pipeline_schedule")
+        except subprocess.CalledProcessError as e:
+            print(e.stderr, end="")
+            raise RuntimeError("Compilation failed: ", " ".join(command))
+
+    def get_compiled_kernel(self):
+        return self._kernel
+
+    def __del__(self):
+        if hasattr(self, "_tempdir"):
+            self._tempdir.cleanup()
 
 
 class PipelineKernel:
