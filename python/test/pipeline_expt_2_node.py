@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pickle
 import copy
+from mpi4py import MPI
 
 import mscclpp.comm as mscclpp_comm
 from .pipeline_schedule import (
@@ -210,6 +211,11 @@ def multi_instance(Ts: dict, Cs: dict, k: int, ninstance: int):
 
 
 if __name__ == "__main__":
+    if MPI.COMM_WORLD.rank < 8:
+        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 3])
+    else:
+        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 2])
+
     mpi_group = MpiGroup(list(range(16)))
     group = mscclpp_comm.CommGroup(mpi_group.comm)
 

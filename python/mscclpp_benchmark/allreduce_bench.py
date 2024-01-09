@@ -10,6 +10,7 @@ import mscclpp.comm as mscclpp_comm
 from mscclpp import ProxyService
 from prettytable import PrettyTable
 import netifaces as ni
+import os
 
 data_type = cp.float32
 
@@ -212,9 +213,9 @@ if __name__ == "__main__":
     cp.cuda.Device(MPI.COMM_WORLD.rank % N_GPUS_PER_NODE).use()
 
     if MPI.COMM_WORLD.rank < 8:
-        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in [0,1,2,4,5,6,7,8]])
+        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 3])
     else:
-        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in [0,1,3,4,5,6,7,8]])
+        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 2])
 
     # create a MscclppGroup
     network_interface = "eth0"
