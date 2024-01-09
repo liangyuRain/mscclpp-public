@@ -6,6 +6,7 @@ import numpy as np
 import pickle
 import copy
 from mpi4py import MPI
+import os
 
 import mscclpp.comm as mscclpp_comm
 from .pipeline_schedule import (
@@ -199,7 +200,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 def multi_instance(Ts: dict, Cs: dict, k: int, ninstance: int):
     rTs, rCs = {}, {}
     count = {}
-    for (u, i), l in Ts:
+    for (u, i), l in Ts.items():
         C = Cs[u, i]
         for j in range(C * ninstance):
             ri = count.get(u, 0)
