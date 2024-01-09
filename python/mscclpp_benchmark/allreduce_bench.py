@@ -211,6 +211,11 @@ if __name__ == "__main__":
     shm_comm.Free()
     cp.cuda.Device(MPI.COMM_WORLD.rank % N_GPUS_PER_NODE).use()
 
+    if MPI.COMM_WORLD.rank < 8:
+        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in [0,1,2,4,5,6,7,8]])
+    else:
+        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in [0,1,3,4,5,6,7,8]])
+
     # create a MscclppGroup
     network_interface = "eth0"
     my_ip = ni.ifaddresses(network_interface)[ni.AF_INET][0]["addr"]
