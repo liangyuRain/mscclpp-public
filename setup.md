@@ -130,6 +130,12 @@ Port 20000
 10.0.0.4 slots=8
 ```
 - `mpirun` should now specify `--hostfile /root/hosts.txt`.
+- No conda is needed: `pip install -r requirements_cu12.txt`
+- Run command
+```
+/usr/local/mpi/bin/mpirun -allow-run-as-root -np 16 --bind-to numa -hostfile /root/hosts.txt -x MSCCLPP_DEBUG=WARN -x LD_LIBRARY_PATH=/root/mscclpp/build:$LD_LIBRARY_PATH -mca pml obl-mca btl ^openib -mca btl_tcp_if_include eth0 -x NCCL_IB_PCI_RELAXED_ORDERING=1 -x NCCL_SOCKET_IFNAME=eth0 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_NET_GDR_LEVEL=5 -x NCCL_TOPO_FILE=/topo.xml -x NCCL_NET_PLUGIN=none -x NCCL_IB_DISABLE=0 -x NCCL_MIN_NCHANNELS=32 -x NCCL_DEBUG=WARN -X NCCL_P2P_DISABLE=0 -X NCCL_SHM_DISABLE=0 -x MSCCLPP_HOME=/root/mscclpp -np 16 -npernode 8 python3 /root/mscclpp/python/mscclpp_benchmark/allreduce_bench.py
+```
+
 
 # Notes
 - Error `ibv_create_cq(cqe=4096) failed: Cannot allocate memory` is caused by not setting `max locked memory` to `unlimited`. One can check by running `ulimit -a`. The solution is to add `--ulimit memlock=-1:-1` when `docker run`. There seems to be a discrepancy between host and docker container in `ulimit -a` by default.
