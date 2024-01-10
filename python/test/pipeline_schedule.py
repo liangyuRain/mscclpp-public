@@ -2,6 +2,7 @@ import struct
 import cupy as cp
 import networkx as nx
 import os
+import uuid
 
 from mscclpp import (
     ProxyService,
@@ -34,13 +35,13 @@ class PipelineKernel:
         recv_proxy_channels: dict,  # recv_proxy_channels[bid] = proxy recv peers of tree
         send_proxy_channels: dict,  # send_proxy_channels[bid] = proxy send peers of tree
         data: cp.ndarray,
-        data_offsets: dict,   # data_offsets[bid] = offset of tree
-        data_sizes: dict,     # data_sizes[bid] = data size of tree
+        data_chunk_offsets: dict,   # data_chunk_offsets[bid] = chunk offset of tree
+        data_chunk_sizes: dict,     # data_chunk_sizes[bid] = data nchunks of tree
+        total_chunks: int,
         scratch_size: int,
         recv_sm_scratches: dict,
         recv_proxy_scratches: dict,
         node_types: dict,     # node_types[bid]: <0: reduce node; =0: root node; >0: broadcast node.
-        nelem_per_send: int,
         nblocks,
         nthreads=1024,
     ):
@@ -63,10 +64,13 @@ class PipelineKernel:
         ).get_compiled_kernel()
         self.nblocks = nblocks
         self.nthreads = nthreads
+        self.data = data
 
-        assert nelem_per_send > 0
-        if any(t <= 0 for t in node_types.values()):
-            assert nelem_per_send <= scratch_size
+        self.data_chunk_offsets = data_chunk_offsets
+        self.data_chunk_sizes = data_chunk_sizes
+        self.total_chunks = total_chunks
+        self.scratch_size = scratch_size
+        self.use_schatch = len(recv_sm_scratches) > 0 or len(recv_proxy_scratches) > 0
 
         recv_sm_handles_arr = []
         send_sm_handles_arr = []
@@ -83,16 +87,13 @@ class PipelineKernel:
         nrecvs_proxy = []
         nsends_proxy = []
         node_types_arr = []
-        data_starts = []
-        nelem_totals = []
         for bid in range(nblocks):
             assert (bid in recv_sm_channels or bid in send_sm_channels or 
                     bid in recv_proxy_channels or bid in send_proxy_channels)
-            assert bid in data_offsets
-            assert bid in data_sizes
+            assert bid in data_chunk_offsets
+            assert bid in data_chunk_sizes
             assert bid in node_types
-
-            assert data_offsets[bid] + data_sizes[bid] <= data.shape[0]
+            assert data_chunk_offsets[bid] + data_chunk_sizes[bid] <= total_chunks
 
             if node_types[bid] > 0:
                 assert len(recv_sm_channels.get(bid, [])) + len(recv_proxy_channels.get(bid, [])) <= 1
@@ -114,11 +115,13 @@ class PipelineKernel:
             block_scratch_starts.append(len(recv_scratches_arr))
             if bid in recv_sm_scratches:
                 assert len(recv_sm_scratches[bid]) == len(recv_sm_handles)
+                assert all(scratch_buff.shape[0] == scratch_size for scratch_buff in recv_sm_scratches[bid])
                 recv_scratches_arr += [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_sm_scratches[bid]]
             else:
                 recv_scratches_arr += [struct.pack("P", 0)] * len(recv_sm_handles)
             if bid in recv_proxy_scratches:
                 assert len(recv_proxy_scratches[bid]) == len(recv_proxy_handles)
+                assert all(scratch_buff.shape[0] == scratch_size for scratch_buff in recv_proxy_scratches[bid])
                 recv_scratches_arr += [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_proxy_scratches[bid]]
             else:
                 recv_scratches_arr += [struct.pack("P", 0)] * len(recv_proxy_handles)
@@ -134,10 +137,7 @@ class PipelineKernel:
             send_proxy_handles_arr += send_proxy_handles
             nsends_sm.append(len(send_sm_handles))
             nsends_proxy.append(len(send_proxy_handles))
-            
             node_types_arr.append(node_types[bid])
-            data_starts.append(data_offsets[bid])
-            nelem_totals.append(data_sizes[bid])
 
         recv_sm_handles_mem = cp.asarray(memoryview(b"".join(recv_sm_handles_arr)), dtype=cp.uint8)
         send_sm_handles_mem = cp.asarray(memoryview(b"".join(send_sm_handles_arr)), dtype=cp.uint8)
@@ -159,8 +159,6 @@ class PipelineKernel:
         nrecvs_proxy = cp.array(nrecvs_proxy, dtype=cp.int32)
         nsends_proxy = cp.array(nsends_proxy, dtype=cp.int32)
         node_types_arr = cp.array(node_types_arr, dtype=cp.byte)
-        data_starts = cp.array(data_starts, dtype=cp.uint64)
-        nelem_totals = cp.array(nelem_totals, dtype=cp.uint64)
 
         assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
         assert len(recv_proxy_handles_arr) == n_recv_proxy_channels and len(send_proxy_handles_arr) == n_send_proxy_channels
@@ -171,8 +169,6 @@ class PipelineKernel:
         assert nrecvs_sm.shape[0] == nblocks and nsends_sm.shape[0] == nblocks
         assert nrecvs_proxy.shape[0] == nblocks and nsends_proxy.shape[0] == nblocks
         assert node_types_arr.shape[0] == nblocks
-        assert data_starts.shape[0] == nblocks
-        assert nelem_totals.shape[0] == nblocks
 
         self.params = b""
         self.params += struct.pack("P", recv_sm_handles_mem.data.ptr) + struct.pack("P", send_sm_handles_mem.data.ptr)
@@ -183,10 +179,7 @@ class PipelineKernel:
         self.params += struct.pack("P", block_scratch_starts.data.ptr)
         self.params += struct.pack("P", nrecvs_sm.data.ptr) + struct.pack("P", nsends_sm.data.ptr)
         self.params += struct.pack("P", nrecvs_proxy.data.ptr) + struct.pack("P", nsends_proxy.data.ptr)
-        self.params += struct.pack("P", node_types_arr.data.ptr)
-        self.params += struct.pack("P", data_starts.data.ptr)
-        self.params += struct.pack("Q", nelem_per_send) + struct.pack("P", nelem_totals.data.ptr) + struct.pack("Q", scratch_size)
-        self.params += struct.pack("P", data.data.ptr)
+        self.params += struct.pack("P", node_types_arr.data.ptr) + struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
 
         # keep references to avoid garbage collection
         self._temp = [recv_sm_channels, send_sm_channels,
@@ -198,10 +191,42 @@ class PipelineKernel:
                       block_recv_proxy_ch_starts, block_send_proxy_ch_starts,
                       block_scratch_starts,
                       nrecvs_sm, nsends_sm, nrecvs_proxy, nsends_proxy,
-                      node_types_arr, data_starts, nelem_totals]
+                      node_types_arr]
+        self._data_starts_nelem_totals = {}
+        self._params = {}
+    
 
-    def __call__(self, stream_ptr=None):
-        return self._kernel.launch_kernel(self.params, self.nblocks, self.nthreads, 0, stream_ptr)
+    def prepare_params(self, nelem_total, nelem_per_send):
+        assert not self.use_schatch or nelem_per_send <= self.scratch_size
+        assert nelem_total <= self.data.shape[0]
+
+        if nelem_total in self._data_starts_nelem_totals:
+            data_starts, nelem_totals = self._data_starts_nelem_totals[nelem_total]
+        else:
+            assert nelem_total % self.total_chunks == 0
+            nelem_per_chunk = nelem_total // self.total_chunks
+
+            data_starts = cp.array([self.data_chunk_offsets[bid] * nelem_per_chunk for bid in range(self.nblocks)], dtype=cp.uint64)
+            nelem_totals = cp.array([self.data_chunk_sizes[bid] * nelem_per_chunk for bid in range(self.nblocks)], dtype=cp.uint64)
+            self._data_starts_nelem_totals[nelem_total] = (data_starts, nelem_totals)
+
+        params = self.params + struct.pack("P", data_starts.data.ptr) + struct.pack("Q", nelem_per_send) + struct.pack("P", nelem_totals.data.ptr)
+        self._params[uuid.uuid1()] = params
+
+        return params
+
+
+    def get_func(self, nelem_total=None, nelem_per_send=None):
+        if nelem_per_send is None:
+            nelem_per_send = self.scratch_size
+        if nelem_total is None:
+            nelem_total = self.data.shape[0]
+        params = self.prepare_params(nelem_total, nelem_per_send)
+        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+
+
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None):
+        return self.get_func(nelem_total, nelem_per_send)(stream_ptr)
 
 
 def verify_spanning_tree(G: nx.DiGraph, nranks: int, root: int):
@@ -269,111 +294,7 @@ def make_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, co
 
 def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                      connections: dict, connection_types: dict, data: cp.ndarray,
-                     allreduce_length: int, nelem_per_send: int, scratch_size: int,
-                     proxy_service: ProxyService = None):
-    assert allreduce_length % (k * group.nranks) == 0
-    assert scratch_size >= nelem_per_send
-    assert allreduce_length == data.shape[0]
-    for dest, connect in connections.items():
-        transport = connect.transport()
-        connect_type = connection_types[dest]
-        assert connect_type in ["sm", "proxy"]
-        assert (transport == Transport.CudaIpc or 
-                (transport in IB_TRANSPORTS and
-                 proxy_service is not None and
-                 connect_type == "proxy"))
-
-    chunk_starts = {}
-    chunk_counts = {}
-    for (u, i), C in sorted(Cs.items(), key=lambda x: x[0]):
-        if u not in chunk_counts:
-            chunk_starts[u, i] = 0
-            chunk_counts[u] = C
-        else:
-            chunk_starts[u, i] = chunk_counts[u]
-            chunk_counts[u] += C
-    nchunks_per_shard = k
-    total_chunks = nchunks_per_shard * group.nranks
-    nelem_per_chunk = allreduce_length // total_chunks
-
-    recv_sm_channels, send_sm_channels = {}, {}
-    recv_proxy_channels, send_proxy_channels = {}, {}
-    recv_sm_scratches, recv_proxy_scratches = {}, {}
-    node_types = {}
-    data_offsets = {}
-    data_sizes = {}
-    nblocks = 0
-
-    for (u, i), ps in sorted(Ts.items(), key=lambda x: x[0]):
-        test_G = nx.DiGraph()
-        test_G.add_edges_from((p[0][0], p[-1][-1]) for p in ps)
-        verify_spanning_tree(test_G, group.nranks, u)
-
-        chunk = u * nchunks_per_shard + chunk_starts[u, i]
-        offset = nelem_per_chunk * chunk
-
-        children = list(test_G.successors(group.my_rank))
-
-        if group.my_rank == u:
-            # root
-            tb_id = nblocks
-            nblocks += 1
-            (recv_sm_channels[tb_id], send_sm_channels[tb_id],
-             recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
-             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
-                make_channels(group=group, proxy_service=proxy_service, connections=connections,
-                              connection_types=connection_types, recv_peers=children,
-                              send_peers=children, data=data, scratch_size=scratch_size)
-            node_types[tb_id] = 0
-            data_offsets[tb_id] = offset
-            data_sizes[tb_id] = nelem_per_chunk * Cs[u, i]
-        else:
-            # reduce node
-            tb_id = nblocks
-            nblocks += 1
-            (recv_sm_channels[tb_id], send_sm_channels[tb_id],
-             recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
-             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
-                make_channels(group=group, proxy_service=proxy_service, connections=connections,
-                              connection_types=connection_types, recv_peers=children,
-                              send_peers=list(test_G.predecessors(group.my_rank)),
-                              data=data, scratch_size=scratch_size)
-            assert len(send_sm_channels[tb_id]) + len(send_proxy_channels[tb_id]) <= 1
-            node_types[tb_id] = -1
-            data_offsets[tb_id] = offset
-            data_sizes[tb_id] = nelem_per_chunk * Cs[u, i]
-
-            # broadcast node
-            tb_id = nblocks
-            nblocks += 1
-            (recv_sm_channels[tb_id], send_sm_channels[tb_id],
-             recv_proxy_channels[tb_id], send_proxy_channels[tb_id]) = \
-                make_channels(group=group, proxy_service=proxy_service, connections=connections,
-                              connection_types=connection_types,
-                              recv_peers=list(test_G.predecessors(group.my_rank)),
-                              send_peers=children, data=data, scratch_size=None)
-            assert len(recv_sm_channels[tb_id]) + len(recv_proxy_channels[tb_id]) <= 1
-            node_types[tb_id] = 1
-            data_offsets[tb_id] = offset
-            data_sizes[tb_id] = nelem_per_chunk * Cs[u, i]
-
-    args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
-                recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
-                data=data, data_offsets=data_offsets, data_sizes=data_sizes, scratch_size=scratch_size, 
-                recv_sm_scratches=recv_sm_scratches, recv_proxy_scratches=recv_proxy_scratches,
-                node_types=node_types, nelem_per_send=nelem_per_send, 
-                nblocks=nblocks)
-    kernel = PipelineKernel(**args)
-
-    return kernel
-
-
-def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
-                     connections: dict, connection_types: dict, data: cp.ndarray,
-                     allgather_length: int, nelem_per_send: int,
-                     proxy_service: ProxyService = None):
-    assert allgather_length % (k * group.nranks) == 0
-    assert allgather_length == data.shape[0]
+                     scratch_size: int, proxy_service: ProxyService = None):
     for dest, connect in connections.items():
         transport = connect.transport()
         connect_type = connection_types[dest]
@@ -395,13 +316,13 @@ def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
     assert all(cnt == k for cnt in chunk_counts.values())
     nchunks_per_shard = k
     total_chunks = nchunks_per_shard * group.nranks
-    nelem_per_chunk = allgather_length // total_chunks
 
     recv_sm_channels, send_sm_channels = {}, {}
     recv_proxy_channels, send_proxy_channels = {}, {}
+    recv_sm_scratches, recv_proxy_scratches = {}, {}
     node_types = {}
-    data_offsets = {}
-    data_sizes = {}
+    data_chunk_offsets = {}
+    data_chunk_sizes = {}
     nblocks = 0
 
     for (u, i), ps in sorted(Ts.items(), key=lambda x: x[0]):
@@ -410,42 +331,66 @@ def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         verify_spanning_tree(test_G, group.nranks, u)
 
         chunk = u * nchunks_per_shard + chunk_starts[u, i]
-        offset = nelem_per_chunk * chunk
 
         children = list(test_G.successors(group.my_rank))
 
-        # broadcast node
-        tb_id = nblocks
-        nblocks += 1
-        (recv_sm_channels[tb_id], send_sm_channels[tb_id],
-         recv_proxy_channels[tb_id], send_proxy_channels[tb_id]) = \
-         make_channels(group=group, proxy_service=proxy_service, connections=connections,
-                       connection_types=connection_types,
-                       recv_peers=list(test_G.predecessors(group.my_rank)),
-                       send_peers=children, data=data, scratch_size=None)
-        assert len(recv_sm_channels[tb_id]) + len(recv_proxy_channels[tb_id]) <= 1
-        node_types[tb_id] = 1
-        data_offsets[tb_id] = offset
-        data_sizes[tb_id] = nelem_per_chunk * Cs[u, i]
+        if group.my_rank == u:
+            # root
+            tb_id = nblocks
+            nblocks += 1
+            (recv_sm_channels[tb_id], send_sm_channels[tb_id],
+             recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
+             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
+                make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                              connection_types=connection_types, recv_peers=children,
+                              send_peers=children, data=data, scratch_size=scratch_size)
+            node_types[tb_id] = 0
+            data_chunk_offsets[tb_id] = chunk
+            data_chunk_sizes[tb_id] = Cs[u, i]
+        else:
+            # reduce node
+            tb_id = nblocks
+            nblocks += 1
+            (recv_sm_channels[tb_id], send_sm_channels[tb_id],
+             recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
+             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
+                make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                              connection_types=connection_types, recv_peers=children,
+                              send_peers=list(test_G.predecessors(group.my_rank)),
+                              data=data, scratch_size=scratch_size)
+            assert len(send_sm_channels[tb_id]) + len(send_proxy_channels[tb_id]) <= 1
+            node_types[tb_id] = -1
+            data_chunk_offsets[tb_id] = chunk
+            data_chunk_sizes[tb_id] = Cs[u, i]
+
+            # broadcast node
+            tb_id = nblocks
+            nblocks += 1
+            (recv_sm_channels[tb_id], send_sm_channels[tb_id],
+             recv_proxy_channels[tb_id], send_proxy_channels[tb_id]) = \
+                make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                              connection_types=connection_types,
+                              recv_peers=list(test_G.predecessors(group.my_rank)),
+                              send_peers=children, data=data, scratch_size=None)
+            assert len(recv_sm_channels[tb_id]) + len(recv_proxy_channels[tb_id]) <= 1
+            node_types[tb_id] = 1
+            data_chunk_offsets[tb_id] = chunk
+            data_chunk_sizes[tb_id] = Cs[u, i]
 
     args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
                 recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
-                data=data, data_offsets=data_offsets, data_sizes=data_sizes, scratch_size=0, 
-                recv_sm_scratches={}, recv_proxy_scratches={},
-                node_types=node_types, nelem_per_send=nelem_per_send, 
-                nblocks=nblocks)
+                data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
+                total_chunks=total_chunks, scratch_size=scratch_size,
+                recv_sm_scratches=recv_sm_scratches, recv_proxy_scratches=recv_proxy_scratches,
+                node_types=node_types, nblocks=nblocks)
     kernel = PipelineKernel(**args)
 
     return kernel
 
 
-def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
-                          connections: dict, connection_types: dict, data: cp.ndarray,
-                          reduce_scatter_length: int, nelem_per_send: int, scratch_size: int,
-                          proxy_service: ProxyService = None):
-    assert reduce_scatter_length % (k * group.nranks) == 0
-    assert scratch_size >= nelem_per_send
-    assert reduce_scatter_length == data.shape[0]
+def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
+                     connections: dict, connection_types: dict, data: cp.ndarray,
+                     proxy_service: ProxyService = None):
     for dest, connect in connections.items():
         transport = connect.transport()
         connect_type = connection_types[dest]
@@ -464,16 +409,15 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
         else:
             chunk_starts[u, i] = chunk_counts[u]
             chunk_counts[u] += C
+    assert all(cnt == k for cnt in chunk_counts.values())
     nchunks_per_shard = k
     total_chunks = nchunks_per_shard * group.nranks
-    nelem_per_chunk = reduce_scatter_length // total_chunks
 
     recv_sm_channels, send_sm_channels = {}, {}
     recv_proxy_channels, send_proxy_channels = {}, {}
-    recv_sm_scratches, recv_proxy_scratches = {}, {}
     node_types = {}
-    data_offsets = {}
-    data_sizes = {}
+    data_chunk_offsets = {}
+    data_chunk_sizes = {}
     nblocks = 0
 
     for (u, i), ps in sorted(Ts.items(), key=lambda x: x[0]):
@@ -482,7 +426,73 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
         verify_spanning_tree(test_G, group.nranks, u)
 
         chunk = u * nchunks_per_shard + chunk_starts[u, i]
-        offset = nelem_per_chunk * chunk
+
+        children = list(test_G.successors(group.my_rank))
+
+        # broadcast node
+        tb_id = nblocks
+        nblocks += 1
+        (recv_sm_channels[tb_id], send_sm_channels[tb_id],
+         recv_proxy_channels[tb_id], send_proxy_channels[tb_id]) = \
+         make_channels(group=group, proxy_service=proxy_service, connections=connections,
+                       connection_types=connection_types,
+                       recv_peers=list(test_G.predecessors(group.my_rank)),
+                       send_peers=children, data=data, scratch_size=None)
+        assert len(recv_sm_channels[tb_id]) + len(recv_proxy_channels[tb_id]) <= 1
+        node_types[tb_id] = 1
+        data_chunk_offsets[tb_id] = chunk
+        data_chunk_sizes[tb_id] = Cs[u, i]
+
+    args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
+                recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
+                data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
+                total_chunks=total_chunks, scratch_size=0,
+                recv_sm_scratches={}, recv_proxy_scratches={},
+                node_types=node_types, nblocks=nblocks)
+    kernel = PipelineKernel(**args)
+
+    return kernel
+
+
+def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
+                          connections: dict, connection_types: dict, data: cp.ndarray,
+                          scratch_size: int, proxy_service: ProxyService = None):
+    for dest, connect in connections.items():
+        transport = connect.transport()
+        connect_type = connection_types[dest]
+        assert connect_type in ["sm", "proxy"]
+        assert (transport == Transport.CudaIpc or 
+                (transport in IB_TRANSPORTS and
+                 proxy_service is not None and
+                 connect_type == "proxy"))
+
+    chunk_starts = {}
+    chunk_counts = {}
+    for (u, i), C in sorted(Cs.items(), key=lambda x: x[0]):
+        if u not in chunk_counts:
+            chunk_starts[u, i] = 0
+            chunk_counts[u] = C
+        else:
+            chunk_starts[u, i] = chunk_counts[u]
+            chunk_counts[u] += C
+    assert all(cnt == k for cnt in chunk_counts.values())
+    nchunks_per_shard = k
+    total_chunks = nchunks_per_shard * group.nranks
+
+    recv_sm_channels, send_sm_channels = {}, {}
+    recv_proxy_channels, send_proxy_channels = {}, {}
+    recv_sm_scratches, recv_proxy_scratches = {}, {}
+    node_types = {}
+    data_chunk_offsets = {}
+    data_chunk_sizes = {}
+    nblocks = 0
+
+    for (u, i), ps in sorted(Ts.items(), key=lambda x: x[0]):
+        test_G = nx.DiGraph()
+        test_G.add_edges_from((p[0][0], p[-1][-1]) for p in ps)
+        verify_spanning_tree(test_G, group.nranks, u)
+
+        chunk = u * nchunks_per_shard + chunk_starts[u, i]
 
         children = list(test_G.successors(group.my_rank))
 
@@ -498,15 +508,15 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
                             data=data, scratch_size=scratch_size)
         assert len(send_sm_channels[tb_id]) + len(send_proxy_channels[tb_id]) <= 1
         node_types[tb_id] = -1
-        data_offsets[tb_id] = offset
-        data_sizes[tb_id] = nelem_per_chunk * Cs[u, i]
+        data_chunk_offsets[tb_id] = chunk
+        data_chunk_sizes[tb_id] = Cs[u, i]
 
     args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
                 recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
-                data=data, data_offsets=data_offsets, data_sizes=data_sizes, scratch_size=scratch_size, 
+                data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
+                total_chunks=total_chunks, scratch_size=scratch_size,
                 recv_sm_scratches=recv_sm_scratches, recv_proxy_scratches=recv_proxy_scratches,
-                node_types=node_types, nelem_per_send=nelem_per_send, 
-                nblocks=nblocks)
+                node_types=node_types, nblocks=nblocks)
     kernel = PipelineKernel(**args)
 
     return kernel

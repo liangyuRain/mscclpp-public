@@ -34,18 +34,18 @@
 /// @param node_type <0: reduce node; =0: root node; >0: broadcast node.
 /// The send channels of broadcast and root nodes write to data buffer.
 /// The send channels of reduce node write to scratch buffer.
-/// @param data_start The data buffer start.
-/// @param nelem_per_send Num of elements in each send.
-/// @param nelem_total Total num of elements need to be send/recv.
 /// @param scratch_size Max num of elements in scratch buffer for each recv channel (ignore if not reduce).
 /// scratch_size must be greater than nelem_per_send
 /// @param data Data buffer.
+/// @param data_start The data buffer start.
+/// @param nelem_per_send Num of elements in each send.
+/// @param nelem_total Total num of elements need to be send/recv.
 MSCCLPP_DEVICE_INLINE void 
     threadblockCall(mscclpp::SmChannelDeviceHandle* recv_sm_channels, mscclpp::SmChannelDeviceHandle* send_sm_channels,
                     mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channels, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channels,
                     int** recv_scratches, const int nrecv_sm, const int nsend_sm, const int nrecv_proxy, const int nsend_proxy,
-                    const char node_type, const uint64_t data_start,
-                    const uint64_t nelem_per_send, const uint64_t nelem_total, const uint64_t scratch_size, int* data) {
+                    const char node_type, const uint64_t scratch_size, int* data,
+                    const uint64_t data_start, const uint64_t nelem_per_send, const uint64_t nelem_total) {
   const int tid = threadIdx.x;
 
   const int nloops = (nelem_total + nelem_per_send - 1) / nelem_per_send; // ceiling division
@@ -233,7 +233,8 @@ MSCCLPP_DEVICE_INLINE void
     if (tid == 0 && nrecv_sm == 1) recv_sm_channels[0].signal(); // `signal` to ensure sender wait until `get` finishes
     for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].wait();
   }
-  for (int i = tid; i < nsend_proxy; i += blockDim.x) send_proxy_channels[i].flush(); // question?
+  for (int i = tid; i < nrecv_proxy; i += blockDim.x) recv_proxy_channels[i].flush();
+  for (int i = tid; i < nsend_proxy; i += blockDim.x) send_proxy_channels[i].flush();
 }
 
 /// Call threadblockCall.
@@ -246,8 +247,8 @@ extern "C" __global__ void __launch_bounds__(1024)
            int* block_recv_proxy_ch_starts, int* block_send_proxy_ch_starts,
            int* block_scratch_starts,
            int* nrecvs_sm, int* nsends_sm, int* nrecvs_proxy, int* nsends_proxy,
-           char* node_types, uint64_t* data_start, const uint64_t nelem_per_send,
-           uint64_t* nelem_total, const uint64_t scratch_size, int* data) {
+           char* node_types, const uint64_t scratch_size, int* data, 
+           const uint64_t* data_start, const uint64_t nelem_per_send, const uint64_t* nelem_total) {
   const int bid = blockIdx.x;
 
   threadblockCall(recv_sm_channels == nullptr ? nullptr : &recv_sm_channels[block_recv_sm_ch_starts[bid]], 
@@ -255,5 +256,6 @@ extern "C" __global__ void __launch_bounds__(1024)
                   recv_proxy_channels == nullptr ? nullptr : &recv_proxy_channels[block_recv_proxy_ch_starts[bid]], 
                   send_proxy_channels == nullptr ? nullptr : &send_proxy_channels[block_send_proxy_ch_starts[bid]],
                   &recv_scratches[block_scratch_starts[bid]], nrecvs_sm[bid], nsends_sm[bid], nrecvs_proxy[bid], nsends_proxy[bid],
-                  node_types[bid], data_start[bid], nelem_per_send, nelem_total[bid], scratch_size, data);
+                  node_types[bid], scratch_size, data,
+                  data_start[bid], nelem_per_send, nelem_total[bid]);
 }
