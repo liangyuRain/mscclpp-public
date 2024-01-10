@@ -155,14 +155,15 @@ def run_benchmark(
             mscclpp_call = MscclppAllReduce3(mscclpp_group, memory, proxy_service)
             proxy_service.start_proxy()
     else:
-        if memory.nbytes < 2**22:
-            proxy_service = ProxyService()
-            mscclpp_call = MscclppAllReduce5(mscclpp_group, memory, memory_out, N_GPUS_PER_NODE, proxy_service)
-            proxy_service.start_proxy()
-        else:
-            proxy_service = ProxyService()
-            mscclpp_call = MscclppAllReduce4(mscclpp_group, memory, N_GPUS_PER_NODE, proxy_service)
-            proxy_service.start_proxy()
+        # disable low latency one
+        # if memory.nbytes < 2**22:
+        #     proxy_service = ProxyService()
+        #     mscclpp_call = MscclppAllReduce5(mscclpp_group, memory, memory_out, N_GPUS_PER_NODE, proxy_service)
+        #     proxy_service.start_proxy()
+        # else:
+        proxy_service = ProxyService()
+        mscclpp_call = MscclppAllReduce4(mscclpp_group, memory, N_GPUS_PER_NODE, proxy_service)
+        proxy_service.start_proxy()
 
     best_config = find_best_config(mscclpp_call, 20)
     mscclpp_call.set_params(*best_config)
