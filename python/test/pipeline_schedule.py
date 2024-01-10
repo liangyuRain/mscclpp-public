@@ -200,8 +200,8 @@ class PipelineKernel:
                       nrecvs_sm, nsends_sm, nrecvs_proxy, nsends_proxy,
                       node_types_arr, data_starts, nelem_totals]
 
-    def __call__(self):
-        return self._kernel.launch_kernel(self.params, self.nblocks, self.nthreads, 0, None)
+    def __call__(self, stream_ptr=None):
+        return self._kernel.launch_kernel(self.params, self.nblocks, self.nthreads, 0, stream_ptr)
 
 
 def verify_spanning_tree(G: nx.DiGraph, nranks: int, root: int):
