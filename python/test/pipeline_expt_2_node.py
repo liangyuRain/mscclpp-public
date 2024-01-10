@@ -346,9 +346,8 @@ if __name__ == "__main__":
                                             else group.my_ib_device(group.my_rank % 8)
                                          for v in remote_nghrs})
 
-    k = 4
-    # tree_name = f"adjusted_bw_k_{k}_293"
-    tree_name = f"adjusted_noPCIe_IB20_NV250_bw_k_{k}_286"
+    k = 1
+    tree_name = f"symmetric/sym_split_IB20_NV300_bw_k_{k}_320"
     if group.my_rank == 0:
         print(f"tree_file={tree_name}")
     with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
