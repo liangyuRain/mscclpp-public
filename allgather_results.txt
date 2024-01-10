@@ -1,0 +1,98 @@
+root@vmss-a100000005:~# /usr/local/mpi/bin/mpirun -allow-run-as-root -np 16 --bind-to numa -hostfile /root/hosts.txt -x MSCCLPP_DEBUG=WARN -x LD_LIBRARY_PATH=/root/mscclpp-public/build:$LD_LIBRARY_PATH -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 -x NCCL_IB_PCI_RELAXED_ORDERING=1 -x NCCL_SOCKET_IFNAME=eth0 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_NET_GDR_LEVEL=5 -x NCCL_TOPO_FILE=/topo.xml -x NCCL_NET_PLUGIN=none -x NCCL_IB_DISABLE=0 -x NCCL_MIN_NCHANNELS=32 -x NCCL_DEBUG=WARN -x NCCL_P2P_DISABLE=0 -x NCCL_SHM_DISABLE=0 -x MSCCLPP_HOME=/root/mscclpp-public -np 16 -npernode 8 python3 /root/mscclpp-public/python/test/pipeline_expt_2_node.py
+tree_file=symmetric/sym_split_IB20_NV300_bw_k_1_320
+############################################# Allgather #############################################
+nranks=16
+k=6, nelem_per_send=262144
+check_iters=10, warmup_iters=100, iters=100
+KERNEL_FILE=pipeline_kernel.cu, BENCH_METHOD=2
+
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+                1536              163.12              163.12                0.01                0.01
+                3072              164.98              164.98                0.02                0.02
+                6144              163.88              163.88                0.04                0.04
+               12288              163.73              163.73                0.08                0.08
+               24576              162.90              162.90                0.15                0.15
+               49152              164.77              164.77                0.30                0.30
+               98304              163.35              163.35                0.60                0.60
+              196608              163.89              163.89                1.20                1.20
+              393216              170.43              170.43                2.31                2.31
+              786432              172.71              172.71                4.55                4.55
+             1572864              178.08              178.08                8.83                8.83
+             3145728              193.77              193.77               16.23               16.23
+             6291456              217.15              217.15               28.97               28.97
+            12582912              271.92              271.92               46.27               46.27
+            25165824              378.80              378.80               66.44               66.44
+            50331648              555.34              555.34               90.63               90.63
+           100663296             1024.92             1024.92               98.22               98.22
+           201326592             1311.59             1311.59              153.50              153.50
+           402653184             2046.91             2046.91              196.71              196.71
+           805306368             3609.35             3609.35              223.12              223.12
+          1610612736             6733.10             6733.10              239.21              239.21
+          3221225472            12898.72            12898.72              249.73              249.73
+
+
+
+root@vmss-a100000005:~# /usr/local/mpi/bin/mpirun -allow-run-as-root -np 16 --bind-to numa -hostfile /root/hosts.txt -x MSCCLPP_DEBUG=WARN -x LD_LIBRARY_PATH=/root/mscclpp-public/build:$LD_LIBRARY_PATH -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 -x NCCL_IB_PCI_RELAXED_ORDERING=1 -x NCCL_SOCKET_IFNAME=eth0 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_NET_GDR_LEVEL=5 -x NCCL_TOPO_FILE=/topo.xml -x NCCL_NET_PLUGIN=none -x NCCL_IB_DISABLE=0 -x NCCL_MIN_NCHANNELS=32 -x NCCL_DEBUG=WARN -x NCCL_P2P_DISABLE=0 -x NCCL_SHM_DISABLE=0 -x MSCCLPP_HOME=/root/mscclpp-public -np 16 -npernode 8 python3 /root/mscclpp-public/python/test/pipeline_expt_2_node.py
+tree_file=symmetric/sym_split_IB20_NV300_bw_k_1_320
+############################################# Allgather #############################################
+nranks=16
+k=6, nelem_per_send=131072
+check_iters=10, warmup_iters=100, iters=100
+KERNEL_FILE=pipeline_kernel.cu, BENCH_METHOD=2
+
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+                1536              164.46              164.46                0.01                0.01
+                3072              163.27              163.27                0.02                0.02
+                6144              163.77              163.77                0.04                0.04
+               12288              164.25              164.25                0.07                0.07
+               24576              162.97              162.97                0.15                0.15
+               49152              163.55              163.55                0.30                0.30
+               98304              166.11              166.11                0.59                0.59
+              196608              166.43              166.43                1.18                1.18
+              393216              170.94              170.94                2.30                2.30
+              786432              173.78              173.78                4.53                4.53
+             1572864              178.28              178.28                8.82                8.82
+             3145728              193.81              193.81               16.23               16.23
+             6291456              219.03              219.03               28.72               28.72
+            12582912              274.20              274.20               45.89               45.89
+            25165824              378.58              378.58               66.47               66.47
+            50331648              556.61              556.61               90.43               90.43
+           100663296              769.91              769.91              130.75              130.75
+           201326592             1211.96             1211.96              166.12              166.12
+           402653184             2050.17             2050.17              196.40              196.40
+           805306368             3802.28             3802.28              211.80              211.80
+          1610612736             7300.39             7300.39              220.62              220.62
+          3221225472            14222.81            14222.81              226.48              226.48
+
+
+root@vmss-a100000005:~# /usr/local/mpi/bin/mpirun -allow-run-as-root -np 16 --bind-to numa -hostfile /root/hosts.txt -x MSCCLPP_DEBUG=WARN -x LD_LIBRARY_PATH=/root/mscclpp-public/build:$LD_LIBRARY_PATH -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 -x NCCL_IB_PCI_RELAXED_ORDERING=1 -x NCCL_SOCKET_IFNAME=eth0 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_NET_GDR_LEVEL=5 -x NCCL_TOPO_FILE=/topo.xml -x NCCL_NET_PLUGIN=none -x NCCL_IB_DISABLE=0 -x NCCL_MIN_NCHANNELS=32 -x NCCL_DEBUG=WARN -x NCCL_P2P_DISABLE=0 -x NCCL_SHM_DISABLE=0 -x MSCCLPP_HOME=/root/mscclpp-public -np 16 -npernode 8 python3 /root/mscclpp-public/python/test/pipeline_expt_2_node.py
+tree_file=symmetric/sym_split_IB20_NV300_bw_k_1_320
+############################################# Allgather #############################################
+nranks=16
+k=6, nelem_per_send=65536
+check_iters=10, warmup_iters=100, iters=100
+KERNEL_FILE=pipeline_kernel.cu, BENCH_METHOD=2
+
+             size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+                1536              162.24              162.24                0.01                0.01
+                3072              163.35              163.35                0.02                0.02
+                6144              164.36              164.36                0.04                0.04
+               12288              162.47              162.47                0.08                0.08
+               24576              163.49              163.49                0.15                0.15
+               49152              163.00              163.00                0.30                0.30
+               98304              162.52              162.52                0.60                0.60
+              196608              163.37              163.37                1.20                1.20
+              393216              170.33              170.33                2.31                2.31
+              786432              170.93              170.93                4.60                4.60
+             1572864              179.05              179.05                8.78                8.78
+             3145728              195.31              195.31               16.11               16.11
+             6291456              216.59              216.59               29.05               29.05
+            12582912              272.80              272.80               46.12               46.12
+            25165824              379.15              379.15               66.37               66.37
+            50331648              504.78              504.78               99.71               99.71
+           100663296              788.71              788.71              127.63              127.63
+           201326592             1347.08             1347.08              149.45              149.45
+           402653184             2388.97             2388.97              168.55              168.55
+           805306368             4595.04             4595.04              175.26              175.26
+          1610612736             9046.06             9046.06              178.05              178.05
+          3221225472            17873.47            17873.47              180.22              180.22
