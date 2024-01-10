@@ -9,14 +9,15 @@ from mpi4py import MPI
 import os
 
 import mscclpp.comm as mscclpp_comm
-from .pipeline_schedule import (
+from pipeline_schedule import (
+    PipelineKernel,
     allreduce_kernel,
     allgather_kernel,
     reduce_scatter_kernel,
     connect_nvlink,
     KERNEL_FILE,
 )
-from .mscclpp_mpi import MpiGroup
+from mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService, Transport
 
 
@@ -33,7 +34,7 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         print("#" * 45 + " Allreduce " + "#" * 45)
         print(f"nranks={group.nranks}")
         print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
-        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
@@ -89,7 +90,7 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         print("#" * 45 + " Allgather " + "#" * 45)
         print(f"nranks={group.nranks}")
         print(f"k={k}, nelem_per_send={nelem_per_send}")
-        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
@@ -145,7 +146,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         print("#" * 43 + " ReduceScatter " + "#" * 43)
         print(f"nranks={group.nranks}")
         print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
-        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}")
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
@@ -216,6 +217,7 @@ if __name__ == "__main__":
         os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 3])
     else:
         os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 2])
+    cp.cuda.Device(MPI.COMM_WORLD.rank % 8).use()
 
     mpi_group = MpiGroup(list(range(16)))
     group = mscclpp_comm.CommGroup(mpi_group.comm)
@@ -229,9 +231,13 @@ if __name__ == "__main__":
                                         {v: Transport.CudaIpc if v // 8 == group.my_rank // 8
                                             else group.my_ib_device(group.my_rank % 8)
                                          for v in remote_nghrs})
-    
-    k = 1
-    with open(f"/root/mscclpp-public/trees/adjusted_bw_k_{k}_293.pkl", "rb") as f:
+
+    k = 4
+    # tree_name = f"adjusted_bw_k_{k}_293"
+    tree_name = f"adjusted_noPCIe_IB20_NV250_bw_k_{k}_286"
+    if group.my_rank == 0:
+        print(f"tree_file={tree_name}")
+    with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
         Ts, Cs = pickle.load(f)
 
     # Allgather
