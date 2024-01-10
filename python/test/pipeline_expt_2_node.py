@@ -56,7 +56,6 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, nelem_per_send: int, scratch_size: int,
                   check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
-    proxy_service = ProxyService()
     if group.my_rank == 0:
         print("#" * 45 + " Allreduce " + "#" * 45)
         print(f"nranks={group.nranks}")
@@ -66,6 +65,7 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
+        proxy_service = ProxyService()
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
@@ -119,7 +119,6 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, nelem_per_send: int, check_iters: int = 10,
                   warmup_iters: int = 10, iters: int = 10):
-    proxy_service = ProxyService()
     if group.my_rank == 0:
         print("#" * 45 + " Allgather " + "#" * 45)
         print(f"nranks={group.nranks}")
@@ -129,6 +128,7 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
+        proxy_service = ProxyService()
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
@@ -182,7 +182,6 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        connections: dict, connection_types: dict,
                        data_lengths: list, nelem_per_send: int, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
-    proxy_service = ProxyService()
     if group.my_rank == 0:
         print("#" * 43 + " ReduceScatter " + "#" * 43)
         print(f"nranks={group.nranks}")
@@ -192,6 +191,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
+        proxy_service = ProxyService()
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
         
