@@ -147,6 +147,7 @@ Port 20000
 # Notes
 - Error `ibv_create_cq(cqe=4096) failed: Cannot allocate memory` is caused by not setting `max locked memory` to `unlimited`. One can check by running `ulimit -a`. The solution is to add `--ulimit memlock=-1:-1` when `docker run`. There seems to be a discrepancy between host and docker container in `ulimit -a` by default.
 - Run `ib_send_bw -d mlx5_0 -i 1 -a -R --report_gbits` on both server and client sides to check IB bandwidth. (never successful yet on lambda)
+    - Saeed's command: run `ib_write_bw -d mlx5_0` on server node and `ib_write_bw 10.0.0.5 -d mlx5_0` on client node with `10.0.0.5` be the address of server node.
 - If report compile error for `#include <mscclpp/sm_channel_device.hpp>` not found, check if the `include_dir` in `KernelBuilder` from `mscclpp-public/python/mscclpp/utils.py` is as following:
 ```python
 include_dir = os.path.join(self._current_file_dir, "../../include")
@@ -220,3 +221,7 @@ KERNEL_FILE=pipeline_kernel_simplified.cu
 - Ensure if `connection_types[b]=x` at `a`, then `connection_types[a]=x` at `b`.
 - Proxy channel (within a node at least) requires higher `nelem_per_send` (1MB?); otherwise, performance is extremely poor.
 - Number of proxy channels: [issue](https://github.com/microsoft/mscclpp/issues/242)
+- Be careful about mlx nics. Some may be using ethernet instead of IB and need to be avoided by setting `MSCCLPP_HCA_DEVICES`.
+- `cp.cuda.Device(MPI.COMM_WORLD.rank % 8).use()` is necessary; otherwise, all processes may use the same GPU.
+- Proxy must be reconstructed `proxy_service = ProxyService()` for every data size; otherwise, program may hang due to proxy service being reused too many times.
+- Right now, the best 2x A100 node performance is achieved by manually edge-split the topology into local rings and one-to-one inter-node connections. IB bw is set to 20GB/s with NVLink set to 300GB/s, forcing code to use IB as less as possible. The optimal tree for large data sizes appears to be is to generate symmetric k=1 tree and then ninstance=6, achieving 250GB/s algbw at 3GB.
