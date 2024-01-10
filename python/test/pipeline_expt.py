@@ -16,6 +16,33 @@ from .mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService
 
 
+BENCH_METHOD = 2
+
+
+def bench_time(niter: int, func):
+    # capture cuda graph for nites of the kernel launch
+    stream = cp.cuda.Stream(non_blocking=True)
+    with stream:
+        stream.begin_capture()
+        for i in range(niter):
+            func(stream.ptr)
+        graph = stream.end_capture()
+
+    # now run a warm up round
+    graph.launch(stream)
+
+    # now run the benchmark and measure time
+    start = cp.cuda.Event()
+    end = cp.cuda.Event()
+
+    start.record(stream)
+    graph.launch(stream)
+    end.record(stream)
+    end.synchronize()
+
+    return cp.cuda.get_elapsed_time(start, end) / niter  # milliseconds
+
+
 def print_row(*args):
     print("".join(f"{arg:>20}" for arg in args), flush=True)
 
@@ -24,16 +51,16 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, nelem_per_send: int, scratch_size: int,
                   check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
-    proxy_service = ProxyService()
     if group.my_rank == 0:
         print("#" * 45 + " Allreduce " + "#" * 45)
         print(f"nranks={group.nranks}")
         print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
-        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
-        print(f"KERNEL_FILE={KERNEL_FILE}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
+        proxy_service = ProxyService()
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
@@ -61,9 +88,16 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             assert cp.array_equal(data, expected)
 
         group.barrier()
-        res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
-        avg_time = np.average(res)  # seconds
-        min_time = np.min(res)
+        if BENCH_METHOD == 1:
+            res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
+            avg_time = np.average(res)  # seconds
+            min_time = np.min(res)
+        elif BENCH_METHOD == 2:
+            res = bench_time(iters, kernel) / 1e3
+            avg_time = res  # seconds
+            min_time = res
+        else:
+            raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
 
         proxy_service.stop_proxy()
 
@@ -80,16 +114,16 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, nelem_per_send: int, check_iters: int = 10,
                   warmup_iters: int = 10, iters: int = 10):
-    proxy_service = ProxyService()
     if group.my_rank == 0:
         print("#" * 45 + " Allgather " + "#" * 45)
         print(f"nranks={group.nranks}")
         print(f"k={k}, nelem_per_send={nelem_per_send}")
-        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
-        print(f"KERNEL_FILE={KERNEL_FILE}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
+        proxy_service = ProxyService()
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
@@ -117,9 +151,16 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             assert cp.array_equal(data, expected)
 
         group.barrier()
-        res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
-        avg_time = np.average(res)  # seconds
-        min_time = np.min(res)
+        if BENCH_METHOD == 1:
+            res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
+            avg_time = np.average(res)  # seconds
+            min_time = np.min(res)
+        elif BENCH_METHOD == 2:
+            res = bench_time(iters, kernel) / 1e3
+            avg_time = res  # seconds
+            min_time = res
+        else:
+            raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
 
         proxy_service.stop_proxy()
 
@@ -136,16 +177,16 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        connections: dict, connection_types: dict,
                        data_lengths: list, nelem_per_send: int, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
-    proxy_service = ProxyService()
     if group.my_rank == 0:
         print("#" * 43 + " ReduceScatter " + "#" * 43)
         print(f"nranks={group.nranks}")
         print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
-        print(f"check_iters={check_iters}, warmup_iters={check_iters}, iters={iters}")
-        print(f"KERNEL_FILE={KERNEL_FILE}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
         print()
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     for length in data_lengths:
+        proxy_service = ProxyService()
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
         
@@ -178,9 +219,16 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
             assert cp.array_equal(data[shard_begin: shard_end], expected)
 
         group.barrier()
-        res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
-        avg_time = np.average(res)  # seconds
-        min_time = np.min(res)
+        if BENCH_METHOD == 1:
+            res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
+            avg_time = np.average(res)  # seconds
+            min_time = np.min(res)
+        elif BENCH_METHOD == 2:
+            res = bench_time(iters, kernel) / 1e3
+            avg_time = res  # seconds
+            min_time = res
+        else:
+            raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
 
         proxy_service.stop_proxy()
 
