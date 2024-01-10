@@ -72,8 +72,8 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             print_row(size, 
                       f"{avg_time * 1e6:.2f}",
                       f"{min_time * 1e6:.2f}",
-                      f"{(size / 2 ** 30) / avg_time:.2f}",
-                      f"{(size / 2 ** 30) / min_time:.2f}")
+                      f"{(size / 1e9) / avg_time:.2f}",
+                      f"{(size / 1e9) / min_time:.2f}")
 
 
 def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
@@ -128,8 +128,8 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             print_row(size, 
                       f"{avg_time * 1e6:.2f}",
                       f"{min_time * 1e6:.2f}",
-                      f"{(size / 2 ** 30) / avg_time:.2f}",
-                      f"{(size / 2 ** 30) / min_time:.2f}")
+                      f"{(size / 1e9) / avg_time:.2f}",
+                      f"{(size / 1e9) / min_time:.2f}")
 
 
 def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
@@ -189,8 +189,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
             print_row(size, 
                       f"{avg_time * 1e6:.2f}",
                       f"{min_time * 1e6:.2f}",
-                      f"{(size / 2 ** 30) / avg_time:.2f}",
-                      f"{(size / 2 ** 30) / min_time:.2f}")
+                      f"{(size / 1e9) / avg_time:.2f}",
+                      f"{(size / 1e9) / min_time:.2f}")
 
 
 if __name__ == "__main__":
