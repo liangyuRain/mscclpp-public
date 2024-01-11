@@ -11,7 +11,7 @@
 #define N_PEERS 8
 #endif
 
-# define FLUSH_INTERVAL 1000
+# define FLUSH_INTERVAL 10
 
 // END_DEFINES //
 
