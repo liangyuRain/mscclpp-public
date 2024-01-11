@@ -117,9 +117,12 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
-        init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
-        expected = cp.array([sum(n + 1 for n in range(group.nranks))] * length, dtype=cp.int32)
-        correctness_check = lambda: cp.array_equal(data[:length], expected)
+        if check_iters > 0:
+            init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
+            expected = cp.array([sum(n + 1 for n in range(group.nranks))] * length, dtype=cp.int32)
+            correctness_check = lambda: cp.array_equal(data[:length], expected)
+        else:
+            init_data, correctness_check = None, None
 
         run_expt(group=group, kernel=kernel, init_data=init_data, data=data,
                  length=length, nelem_per_send=nelem_per_send, k=k,
@@ -159,10 +162,13 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
-        init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
-        expected = cp.array([off // (length // group.nranks) + 1
-                             for off in range(length)], dtype=cp.int32)
-        correctness_check = lambda: cp.array_equal(data[:length], expected)
+        if check_iters > 0:
+            init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
+            expected = cp.array([off // (length // group.nranks) + 1
+                                for off in range(length)], dtype=cp.int32)
+            correctness_check = lambda: cp.array_equal(data[:length], expected)
+        else:
+            init_data, correctness_check = None, None
 
         run_expt(group=group, kernel=kernel, init_data=init_data, data=data,
                  length=length, nelem_per_send=nelem_per_send, k=k,
@@ -208,9 +214,12 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         shard_begin = shard_size * group.my_rank
         shard_end = shard_begin + shard_size
 
-        init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
-        expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.int32)
-        correctness_check = lambda: cp.array_equal(data[shard_begin: shard_end], expected)
+        if check_iters > 0:    
+            init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
+            expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.int32)
+            correctness_check = lambda: cp.array_equal(data[shard_begin: shard_end], expected)
+        else:
+            init_data, correctness_check = None, None
 
         run_expt(group=group, kernel=kernel, init_data=init_data, data=data,
                  length=length, nelem_per_send=nelem_per_send, k=k,
@@ -232,6 +241,9 @@ if __name__ == "__main__":
         return tp
 
     data_lengths=[2 ** (n - 2) for n in range(20, 31)]
+    check_iters = 10
+    warmup_iters = 20
+    bench_iters = 50
 
     # allpairs
     k = 4
@@ -245,8 +257,9 @@ if __name__ == "__main__":
                   connection_types={dest: channel_type(dest) for dest in connections},
                   data_lengths=data_lengths,
                   send_lengths=[2 ** 18],
-                  warmup_iters=20,
-                  iters=50)
+                  check_iters=check_iters,
+                  warmup_iters=warmup_iters,
+                  iters=bench_iters)
 
     if group.my_rank == 0:
         print()
@@ -265,8 +278,9 @@ if __name__ == "__main__":
                        data_lengths=data_lengths,
                        send_lengths=[2 ** 18],
                        scratch_size=2 ** 20,
-                       warmup_iters=20,
-                       iters=50)
+                       check_iters=check_iters,
+                       warmup_iters=warmup_iters,
+                       iters=bench_iters)
 
     if group.my_rank == 0:
         print()
@@ -285,7 +299,8 @@ if __name__ == "__main__":
                   data_lengths=data_lengths,
                   send_lengths=[2 ** 15],
                   scratch_size=2 ** 20,
-                  warmup_iters=20,
-                  iters=50)
+                  check_iters=check_iters,
+                  warmup_iters=warmup_iters,
+                  iters=bench_iters)
 
     del group
