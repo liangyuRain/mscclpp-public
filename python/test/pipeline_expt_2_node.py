@@ -132,14 +132,15 @@ if __name__ == "__main__":
     with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
         Ts, Cs = pickle.load(f)
 
+    data_lengths=[2 ** (n - 2) for n in range(10, 31)]
+
     # Allgather
     ninstance = 1
     Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
     run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
-                  # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
-                  data_lengths=[2 ** 28],
-                  nelem_per_send=2 ** 18,
+                  data_lengths=data_lengths,
+                  nelem_per_send=[2 ** 18],
                   warmup_iters=20,
                   iters=50)
 
@@ -151,8 +152,7 @@ if __name__ == "__main__":
     Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
     run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
                        connection_types={dest: channel_type(dest) for dest in connections},
-                       # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
-                       data_lengths=[2 ** 28],
+                       data_lengths=data_lengths,
                        nelem_per_send=2 ** 18,
                        scratch_size=2 ** 20,
                        warmup_iters=20,
@@ -166,8 +166,7 @@ if __name__ == "__main__":
     Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
     run_allreduce(Tsp, Csp, kp, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
-                  # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
-                  data_lengths=[2 ** 28],
+                  data_lengths=data_lengths,
                   nelem_per_send=2 ** 15,
                   scratch_size=2 ** 20,
                   warmup_iters=20,

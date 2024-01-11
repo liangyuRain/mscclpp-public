@@ -3,9 +3,11 @@ from cupyx.profiler import benchmark
 import itertools
 import math
 import numpy as np
+from mpi4py import MPI
 
 import mscclpp.comm as mscclpp_comm
 from .pipeline_schedule import (
+    PipelineKernel,
     allreduce_kernel,
     allgather_kernel,
     reduce_scatter_kernel,
@@ -47,146 +49,157 @@ def print_row(*args):
     print("".join(f"{arg:>20}" for arg in args), flush=True)
 
 
+def run_expt(group: mscclpp_comm.CommGroup, kernel: PipelineKernel,
+             init_data: cp.array, data: cp.array,
+             length: int, nelem_per_send: int, k: int,
+             correctness_check,
+             check_iters: int, warmup_iters: int, iters: int):
+    func = kernel.get_func(nelem_total=length, nelem_per_send=nelem_per_send)
+    group.barrier()
+    for _ in range(check_iters):
+        cp.copyto(data[:length], init_data)
+        func()
+        cp.cuda.runtime.deviceSynchronize()
+        assert correctness_check()
+
+    cp.cuda.runtime.deviceSynchronize()
+    group.barrier()
+    if BENCH_METHOD == 1:
+        res = benchmark(func, n_warmup=warmup_iters, n_repeat=iters).gpu_times
+        avg_time = np.average(res)  # seconds
+        min_time = np.min(res)
+    elif BENCH_METHOD == 2:
+        res = bench_time(iters, func) / 1e3
+        avg_time = res  # seconds
+        min_time = res
+    else:
+        raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
+
+    size = length * 4
+    send_size = nelem_per_send * 4
+    if group.my_rank == 0:
+        print_row(size, send_size,
+                  f"{avg_time * 1e6:.2f}",
+                  f"{min_time * 1e6:.2f}",
+                  f"{(size / 1e9) / avg_time:.2f}",
+                  f"{(size / 1e9) / min_time:.2f}")
+    group.barrier()
+
+
 def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
-                  data_lengths: list, nelem_per_send: int, scratch_size: int,
+                  data_lengths: list, send_lengths: list, scratch_size: int,
                   check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
     if group.my_rank == 0:
-        print("#" * 45 + " Allreduce " + "#" * 45)
+        print("#" * 55 + " Allreduce " + "#" * 55)
         print(f"nranks={group.nranks}")
-        print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
+        print(f"k={k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
         print()
-        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
-    for length in data_lengths:
-        proxy_service = ProxyService()
+        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
+
+    proxy_service = ProxyService()
+
+    max_length = max(data_lengths)
+    data = cp.zeros(max_length, dtype=cp.int32)
+    kernel = allreduce_kernel(Ts, Cs, k,
+                              group=group,
+                              connections=connections,
+                              connection_types=connection_types,
+                              data=data,
+                              scratch_size=scratch_size,
+                              proxy_service=proxy_service)
+
+    proxy_service.start_proxy()
+
+    for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
         init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
         expected = cp.array([sum(n + 1 for n in range(group.nranks))] * length, dtype=cp.int32)
+        correctness_check = lambda: cp.array_equal(data[:length], expected)
 
-        data = cp.zeros(length, dtype=cp.int32)
+        run_expt(group=group, kernel=kernel, init_data=init_data, data=data,
+                 length=length, nelem_per_send=nelem_per_send, k=k,
+                 correctness_check=correctness_check,
+                 check_iters=check_iters, warmup_iters=warmup_iters, iters=iters)
 
-        kernel = allreduce_kernel(Ts, Cs, k,
-                                  group=group,
-                                  connections=connections,
-                                  connection_types=connection_types,
-                                  data=data,
-                                  allreduce_length=length,
-                                  nelem_per_send=nelem_per_send,
-                                  scratch_size=scratch_size,
-                                  proxy_service=proxy_service)
-
-        proxy_service.start_proxy()
-
-        for _ in range(check_iters):
-            cp.copyto(data, init_data)
-            kernel()
-            cp.cuda.runtime.deviceSynchronize()
-            assert cp.array_equal(data, expected)
-
-        group.barrier()
-        if BENCH_METHOD == 1:
-            res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
-            avg_time = np.average(res)  # seconds
-            min_time = np.min(res)
-        elif BENCH_METHOD == 2:
-            res = bench_time(iters, kernel) / 1e3
-            avg_time = res  # seconds
-            min_time = res
-        else:
-            raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
-
-        proxy_service.stop_proxy()
-
-        size = length * 4
-        if group.my_rank == 0:
-            print_row(size, 
-                      f"{avg_time * 1e6:.2f}",
-                      f"{min_time * 1e6:.2f}",
-                      f"{(size / 1e9) / avg_time:.2f}",
-                      f"{(size / 1e9) / min_time:.2f}")
+    proxy_service.stop_proxy()
 
 
 def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
-                  data_lengths: list, nelem_per_send: int, check_iters: int = 10,
+                  data_lengths: list, send_lengths: list, check_iters: int = 10,
                   warmup_iters: int = 10, iters: int = 10):
     if group.my_rank == 0:
-        print("#" * 45 + " Allgather " + "#" * 45)
+        print("#" * 55 + " Allgather " + "#" * 55)
         print(f"nranks={group.nranks}")
-        print(f"k={k}, nelem_per_send={nelem_per_send}")
+        print(f"k={k}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
         print()
-        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
-    for length in data_lengths:
-        proxy_service = ProxyService()
+        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
+
+    proxy_service = ProxyService()
+
+    max_length = max(data_lengths)
+    data = cp.zeros(max_length, dtype=cp.int32)
+    kernel = allgather_kernel(Ts, Cs, k,
+                              group=group,
+                              connections=connections,
+                              connection_types=connection_types,
+                              data=data,
+                              proxy_service=proxy_service)
+
+    proxy_service.start_proxy()
+
+    for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
 
         init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
         expected = cp.array([off // (length // group.nranks) + 1
                              for off in range(length)], dtype=cp.int32)
+        correctness_check = lambda: cp.array_equal(data[:length], expected)
 
-        data = cp.zeros(length, dtype=cp.int32)
+        run_expt(group=group, kernel=kernel, init_data=init_data, data=data,
+                 length=length, nelem_per_send=nelem_per_send, k=k,
+                 correctness_check=correctness_check,
+                 check_iters=check_iters, warmup_iters=warmup_iters, iters=iters)
 
-        kernel = allgather_kernel(Ts, Cs, k,
-                                  group=group,
-                                  connections=connections,
-                                  connection_types=connection_types,
-                                  data=data,
-                                  allgather_length=length,
-                                  nelem_per_send=nelem_per_send,
-                                  proxy_service=proxy_service)
-
-        proxy_service.start_proxy()
-
-        for _ in range(check_iters):
-            cp.copyto(data, init_data)
-            kernel()
-            cp.cuda.runtime.deviceSynchronize()
-            assert cp.array_equal(data, expected)
-
-        group.barrier()
-        if BENCH_METHOD == 1:
-            res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
-            avg_time = np.average(res)  # seconds
-            min_time = np.min(res)
-        elif BENCH_METHOD == 2:
-            res = bench_time(iters, kernel) / 1e3
-            avg_time = res  # seconds
-            min_time = res
-        else:
-            raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
-
-        proxy_service.stop_proxy()
-
-        size = length * 4
-        if group.my_rank == 0:
-            print_row(size, 
-                      f"{avg_time * 1e6:.2f}",
-                      f"{min_time * 1e6:.2f}",
-                      f"{(size / 1e9) / avg_time:.2f}",
-                      f"{(size / 1e9) / min_time:.2f}")
+    proxy_service.stop_proxy()
 
 
 def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                        connections: dict, connection_types: dict,
-                       data_lengths: list, nelem_per_send: int, scratch_size: int,
+                       data_lengths: list, send_lengths: list, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
     if group.my_rank == 0:
-        print("#" * 43 + " ReduceScatter " + "#" * 43)
+        print("#" * 53 + " ReduceScatter " + "#" * 53)
         print(f"nranks={group.nranks}")
-        print(f"k={k}, nelem_per_send={nelem_per_send}, scratch_size={scratch_size}")
+        print(f"k={k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
         print()
-        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
-    for length in data_lengths:
-        proxy_service = ProxyService()
+        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
+
+    proxy_service = ProxyService()
+
+    max_length = max(data_lengths)
+    data = cp.zeros(max_length, dtype=cp.int32)
+    kernel = reduce_scatter_kernel(Ts, Cs, k,
+                                   group=group,
+                                   connections=connections,
+                                   connection_types=connection_types,
+                                   data=data,
+                                   scratch_size=scratch_size,
+                                   proxy_service=proxy_service)
+
+    proxy_service.start_proxy()
+
+    for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
         if length % (k * group.nranks) != 0:
             length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
         
@@ -197,51 +210,18 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 
         init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
         expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.int32)
+        correctness_check = lambda: cp.array_equal(data[shard_begin: shard_end], expected)
 
-        data = cp.zeros(length, dtype=cp.int32)
+        run_expt(group=group, kernel=kernel, init_data=init_data, data=data,
+                 length=length, nelem_per_send=nelem_per_send, k=k,
+                 correctness_check=correctness_check,
+                 check_iters=check_iters, warmup_iters=warmup_iters, iters=iters)
 
-        kernel = reduce_scatter_kernel(Ts, Cs, k,
-                                       group=group,
-                                       connections=connections,
-                                       connection_types=connection_types,
-                                       data=data,
-                                       reduce_scatter_length=length,
-                                       nelem_per_send=nelem_per_send,
-                                       scratch_size=scratch_size,
-                                       proxy_service=proxy_service)
-
-        proxy_service.start_proxy()
-
-        for _ in range(check_iters):
-            cp.copyto(data, init_data)
-            kernel()
-            cp.cuda.runtime.deviceSynchronize()
-            assert cp.array_equal(data[shard_begin: shard_end], expected)
-
-        group.barrier()
-        if BENCH_METHOD == 1:
-            res = benchmark(lambda: kernel(), n_warmup=warmup_iters, n_repeat=iters).gpu_times
-            avg_time = np.average(res)  # seconds
-            min_time = np.min(res)
-        elif BENCH_METHOD == 2:
-            res = bench_time(iters, kernel) / 1e3
-            avg_time = res  # seconds
-            min_time = res
-        else:
-            raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
-
-        proxy_service.stop_proxy()
-
-        size = length * 4
-        if group.my_rank == 0:
-            print_row(size, 
-                      f"{avg_time * 1e6:.2f}",
-                      f"{min_time * 1e6:.2f}",
-                      f"{(size / 1e9) / avg_time:.2f}",
-                      f"{(size / 1e9) / min_time:.2f}")
+    proxy_service.stop_proxy()
 
 
 if __name__ == "__main__":
+    cp.cuda.Device(MPI.COMM_WORLD.rank).use()
     mpi_group = MpiGroup(list(range(8)))
     group = mscclpp_comm.CommGroup(mpi_group.comm)
 
@@ -250,6 +230,8 @@ if __name__ == "__main__":
         # tp = "proxy"
         # tp = "sm" if dest // 4 == group.my_rank // 4 else "proxy"
         return tp
+
+    data_lengths=[2 ** (n - 2) for n in range(20, 31)]
 
     # allpairs
     k = 4
@@ -261,9 +243,8 @@ if __name__ == "__main__":
 
     run_allgather(Ts, Cs, k, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
-                  # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
-                  data_lengths=[2 ** 28],
-                  nelem_per_send=2 ** 18,
+                  data_lengths=data_lengths,
+                  send_lengths=[2 ** 18],
                   warmup_iters=20,
                   iters=50)
 
@@ -281,9 +262,8 @@ if __name__ == "__main__":
 
     run_reduce_scatter(Ts, Cs, k, group=group, connections=connections, 
                        connection_types={dest: channel_type(dest) for dest in connections},
-                       # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
-                       data_lengths=[2 ** 28],
-                       nelem_per_send=2 ** 18,
+                       data_lengths=data_lengths,
+                       send_lengths=[2 ** 18],
                        scratch_size=2 ** 20,
                        warmup_iters=20,
                        iters=50)
@@ -302,9 +282,8 @@ if __name__ == "__main__":
 
     run_allreduce(Ts, Cs, k, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
-                  # data_lengths=[2 ** (n - 2) for n in range(10, 31)],
-                  data_lengths=[2 ** 28],
-                  nelem_per_send=2 ** 15,
+                  data_lengths=data_lengths,
+                  send_lengths=[2 ** 15],
                   scratch_size=2 ** 20,
                   warmup_iters=20,
                   iters=50)
