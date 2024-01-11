@@ -101,7 +101,7 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
     proxy_service = ProxyService()
 
-    max_length = max(data_lengths)
+    max_length = max(math.ceil(length / (k * group.nranks)) * (k * group.nranks) for length in data_lengths)
     data = cp.zeros(max_length, dtype=cp.int32)
     kernel = allreduce_kernel(Ts, Cs, k,
                               group=group,
@@ -147,7 +147,7 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
     proxy_service = ProxyService()
 
-    max_length = max(data_lengths)
+    max_length = max(math.ceil(length / (k * group.nranks)) * (k * group.nranks) for length in data_lengths)
     data = cp.zeros(max_length, dtype=cp.int32)
     kernel = allgather_kernel(Ts, Cs, k,
                               group=group,
@@ -193,7 +193,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 
     proxy_service = ProxyService()
 
-    max_length = max(data_lengths)
+    max_length = max(math.ceil(length / (k * group.nranks)) * (k * group.nranks) for length in data_lengths)
     data = cp.zeros(max_length, dtype=cp.int32)
     kernel = reduce_scatter_kernel(Ts, Cs, k,
                                    group=group,
