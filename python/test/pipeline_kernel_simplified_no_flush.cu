@@ -11,8 +11,6 @@
 #define N_PEERS 8
 #endif
 
-# define FLUSH_INTERVAL 1000
-
 // END_DEFINES //
 
 /// The call is a single node in the tree.
@@ -118,10 +116,7 @@ MSCCLPP_DEVICE_INLINE void
           for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
             if (chHasUpdate[i]) {
               if (i < nrecv_sm) recv_sm_channels[i].signal();
-              else {
-                if (loop > 0 && loop % FLUSH_INTERVAL == 0) recv_proxy_channels[i - nrecv_sm].flush();
-                recv_proxy_channels[i - nrecv_sm].signal();
-              }
+              else recv_proxy_channels[i - nrecv_sm].signal();
             }
           }
           __syncthreads();
@@ -135,7 +130,6 @@ MSCCLPP_DEVICE_INLINE void
             uint64_t d_start = data_start + loop * nelem_per_send;
             uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
             if (loop == 0) send_proxy_channels[i].wait();
-            else if (loop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
             send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
           }
         } else {
@@ -165,7 +159,6 @@ MSCCLPP_DEVICE_INLINE void
               pending_sends = psends + 1;
             }
           } else if (tid == 0) {
-            if (loop > 0 && loop % FLUSH_INTERVAL == 0) send_proxy_channels[0].flush();
             send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
             pending_sends = psends + 1;
           }
@@ -193,7 +186,6 @@ MSCCLPP_DEVICE_INLINE void
         uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
         for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           if (sloop == 0) send_proxy_channels[i].wait();
-          else if (sloop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
           send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
@@ -222,7 +214,6 @@ MSCCLPP_DEVICE_INLINE void
           for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal();
           for (int i = tid; i < nsend_proxy; i += blockDim.x) {
             if (sloop == 0) send_proxy_channels[i].wait();
-            else if (sloop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
             send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
           }
           ++sloop;

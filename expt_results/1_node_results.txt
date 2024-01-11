@@ -115,3 +115,39 @@ KERNEL_FILE=pipeline_kernel_simplified.cu, BENCH_METHOD=2
            268435456              524288             2714.93             2714.93               98.87               98.87
            536870912              524288             4613.90             4613.90              116.36              116.36
           1073741824              524288             8939.29             8939.29              120.11              120.11
+
+
+PROXY:
+
+####################################################### Allgather #######################################################
+nranks=8
+k=4
+check_iters=10, warmup_iters=20, iters=50
+KERNEL_FILE=pipeline_kernel.cu, BENCH_METHOD=2
+
+             size(B)        send_size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+           536870912             1048576             9936.65             9936.65               54.03               54.03
+          1073741824             1048576            19053.30            19053.30               56.35               56.35
+          2147483648             1048576            37749.08            37749.08               56.89               56.89
+
+##################################################### ReduceScatter #####################################################
+nranks=8
+k=8, scratch_size=1048576
+check_iters=10, warmup_iters=20, iters=50
+KERNEL_FILE=pipeline_kernel.cu, BENCH_METHOD=2
+
+             size(B)        send_size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+           536870912             1048576            12253.49            12253.49               43.81               43.81
+          1073741824             1048576            21929.92            21929.92               48.96               48.96
+          2147483648             1048576            38873.87            38873.87               55.24               55.24
+
+####################################################### Allreduce #######################################################
+nranks=8
+k=4, scratch_size=1048576
+check_iters=10, warmup_iters=20, iters=50
+KERNEL_FILE=pipeline_kernel.cu, BENCH_METHOD=2
+
+             size(B)        send_size(B)        avg_time(us)        min_time(us)     avg_algbw(GB/s)     max_algbw(GB/s)
+           536870912             1048576            19500.63            19500.63               27.53               27.53
+          1073741824             1048576            38779.62            38779.62               27.69               27.69
+          2147483648             1048576            70331.23            70331.23               30.53               30.53

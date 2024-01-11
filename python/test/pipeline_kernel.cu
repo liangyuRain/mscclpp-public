@@ -11,6 +11,8 @@
 #define N_PEERS 8
 #endif
 
+# define FLUSH_INTERVAL 1000
+
 // END_DEFINES //
 
 /// The call is a single node in the tree.
@@ -55,6 +57,7 @@ MSCCLPP_DEVICE_INLINE void
     __shared__ int ready[N_PEERS];
     __shared__ int pending_sends; // Only reduce node needs to track pending sends.
                                   // Reduce node has at most one send peer.
+    int poll_loop_cnt = 0;
 
     #pragma unroll
     for (int i = tid; i < N_PEERS; i += blockDim.x) ready[i] = 0;
@@ -113,10 +116,28 @@ MSCCLPP_DEVICE_INLINE void
         for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
           if (count[i] > 0) {
             if (i < nrecv_sm) recv_sm_channels[i].signal(count[i]);
-            else recv_proxy_channels[i - nrecv_sm].signal(count[i]);
+            else {
+              const int before = reduced[i] - count[i];
+              if (before > 0 && before / FLUSH_INTERVAL < reduced[i] / FLUSH_INTERVAL) recv_proxy_channels[i - nrecv_sm].flush();
+              recv_proxy_channels[i - nrecv_sm].signal(count[i]);
+            }
           }
         }
         __syncthreads(); // Necessary; otherwise, program can freeze in multirun allreduce.
+      }
+
+      if (nsend_proxy == 1) {
+        int psends = pending_sends;
+        if (psends == 0) {
+          poll_loop_cnt = 0;
+        } else {
+          ++poll_loop_cnt;
+          if (poll_loop_cnt >= 10) {
+            if (tid == 0) pending_sends = psends - send_proxy_channels[0].poll(psends);
+            poll_loop_cnt = 0;
+            __syncthreads();
+          }
+        }
       }
 
       if (sloop < rloop) {
@@ -128,6 +149,7 @@ MSCCLPP_DEVICE_INLINE void
             const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
             for (int i = tid; i < nsend_proxy; i += blockDim.x) {
               if (loop == 0) send_proxy_channels[i].wait();
+              else if (loop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
               send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
             }
           }
@@ -136,8 +158,9 @@ MSCCLPP_DEVICE_INLINE void
           // assert nsend_sm + nsend_proxy == 1
           int psends = pending_sends;
           if (psends == max_pending_sends) {
-            if (tid == 0) pending_sends -= (nsend_sm == 1 ? send_sm_channels[0].poll(psends) : 
-                                                            send_proxy_channels[0].poll(psends));
+            if (tid == 0) pending_sends = psends - (nsend_sm == 1 ? send_sm_channels[0].poll(psends) : 
+                                                                    send_proxy_channels[0].poll(psends));
+            poll_loop_cnt = 0;
             __syncthreads();
             psends = pending_sends;
             if (psends == max_pending_sends) {
@@ -163,7 +186,10 @@ MSCCLPP_DEVICE_INLINE void
               uint64_t s_start = (sloop % max_pending_sends) * nelem_per_send;
               uint64_t d_start = data_start + sloop * nelem_per_send;
               uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-              if (tid == 0) send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
+              if (tid == 0) {
+                if (sloop > 0 && sloop % FLUSH_INTERVAL == 0) send_proxy_channels[0].flush();
+                send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
+              }
               ++sloop;
               ++psends;
             } while (psends < max_pending_sends && sloop < rloop);
@@ -176,10 +202,11 @@ MSCCLPP_DEVICE_INLINE void
     if (node_type == 0) { // root
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].wait();
     } else {
-      if (tid == 0 && nsend_sm == 1) {
+      if (tid == 0 && nsend_sm + nsend_proxy == 1) {
         int psends = pending_sends;
         do {
-          psends -= send_sm_channels[0].poll(psends);
+          psends -= (nsend_sm == 1 ? send_sm_channels[0].poll(psends) : 
+                                     send_proxy_channels[0].poll(psends));
         } while (psends > 0);
       }
     }
@@ -192,6 +219,7 @@ MSCCLPP_DEVICE_INLINE void
         const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
         for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           if (sloop == 0) send_proxy_channels[i].wait();
+          else if (sloop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
           send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
@@ -224,6 +252,7 @@ MSCCLPP_DEVICE_INLINE void
           for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal();
           for (int i = tid; i < nsend_proxy; i += blockDim.x) {
             if (sloop == 0) send_proxy_channels[i].wait();
+            else if (sloop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
             send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
           }
           ++sloop;
