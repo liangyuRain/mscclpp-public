@@ -6,7 +6,7 @@ import numpy as np
 from mpi4py import MPI
 
 import mscclpp.comm as mscclpp_comm
-from .pipeline_schedule import (
+from pipeline_schedule import (
     PipelineKernel,
     allreduce_kernel,
     allgather_kernel,
@@ -14,7 +14,7 @@ from .pipeline_schedule import (
     connect_nvlink,
     KERNEL_FILE,
 )
-from .mscclpp_mpi import MpiGroup
+from mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService
 
 

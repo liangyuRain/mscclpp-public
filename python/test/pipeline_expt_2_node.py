@@ -132,7 +132,11 @@ if __name__ == "__main__":
     with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
         Ts, Cs = pickle.load(f)
 
-    data_lengths=[2 ** (n - 2) for n in range(10, 31)]
+    data_lengths = [2 ** (n - 2) for n in range(10, 31)]
+    send_lengths = [2 ** n for n in range(14, 20)]
+    check_iters = 10
+    warmup_iters = 100
+    bench_iters = 100
 
     # Allgather
     ninstance = 1
@@ -140,9 +144,10 @@ if __name__ == "__main__":
     run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
                   data_lengths=data_lengths,
-                  nelem_per_send=[2 ** 18],
-                  warmup_iters=20,
-                  iters=50)
+                  send_lengths=send_lengths,
+                  check_iters=check_iters,
+                  warmup_iters=warmup_iters,
+                  iters=bench_iters)
 
     if group.my_rank == 0:
         print()
@@ -153,10 +158,11 @@ if __name__ == "__main__":
     run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
                        connection_types={dest: channel_type(dest) for dest in connections},
                        data_lengths=data_lengths,
-                       nelem_per_send=2 ** 18,
+                       send_lengths=send_lengths,
                        scratch_size=2 ** 20,
-                       warmup_iters=20,
-                       iters=50)
+                       check_iters=check_iters,
+                       warmup_iters=warmup_iters,
+                       iters=bench_iters)
 
     if group.my_rank == 0:
         print()
@@ -167,9 +173,10 @@ if __name__ == "__main__":
     run_allreduce(Tsp, Csp, kp, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
                   data_lengths=data_lengths,
-                  nelem_per_send=2 ** 15,
+                  send_lengths=send_lengths,
                   scratch_size=2 ** 20,
-                  warmup_iters=20,
-                  iters=50)
+                  check_iters=check_iters,
+                  warmup_iters=warmup_iters,
+                  iters=bench_iters)
 
     del group
