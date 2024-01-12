@@ -112,7 +112,7 @@ mpirun -np 8 python allreduce_bench.py
 ```
 - To perform allgather/reduce-scatter benchmark, one should:
     - `allreduce.cu`: line 672 `allreduce4`, comment out unwanted collective and `devceSyncer`.
-    - `nccl_op.py`: line 19, modify nccl's collective, allgather does not need `nccl.NCCL_SUM`.
+    - `nccl_op.py`: line 19, modify nccl's collective, allgather does not need `nccl.NCCL_SUM`. Allgather and reduce-scatter need to adjust the `size` to `size // 16`. Sometimes there is tcp connection timeout error, then try adding `-u` flag to python.
     - `allreduce_bench.py`: line 175/179, remove `check_correctness` and give `PASS` to `mscclpp_check` and `nccl_check` directly.
 
 # Setup multinode mpirun
