@@ -12,7 +12,8 @@ import mscclpp.comm as mscclpp_comm
 from mscclpp.utils import KernelBuilder
 
 
-KERNEL_FILE = "pipeline_kernel.cu"
+# KERNEL_FILE = "pipeline_kernel.cu"
+KERNEL_FILE = "pipeline_kernel_no_divergence.cu"
 # KERNEL_FILE = "pipeline_kernel_simplified.cu"
 
 
