@@ -111,6 +111,12 @@ struct ProxyChannelDeviceHandle {
       fifo_.push(ChannelTrigger(TriggerFlag, 0, 0, 0, 0, 1, semaphoreId_).value); 
   }
 
+  MSCCLPP_DEVICE_INLINE void signalAndClearCQ(const uint64_t count) {
+    for (uint64_t i = 0; i < count - 1; ++i)
+      fifo_.push(ChannelTrigger(TriggerFlag, 0, 0, 0, 0, 1, semaphoreId_).value);
+    fifo_.push(ChannelTrigger(TriggerFlag | TriggerSync, 0, 0, 0, 0, 1, semaphoreId_).value);
+  }
+
   /// Push a @ref TriggerData and a @ref TriggerFlag at the same time to the FIFO.
   /// @param dst The destination memory region.
   /// @param dstOffset The offset into the destination memory region.
@@ -145,6 +151,11 @@ struct ProxyChannelDeviceHandle {
     fifo_.sync(curFifoHead);
   }
 
+  MSCCLPP_DEVICE_INLINE void putWithSignalAndClearCQ(MemoryId dst, uint64_t dstOffset, MemoryId src, uint64_t srcOffset,
+                                                     uint64_t size) {
+    fifo_.push(ChannelTrigger(TriggerData | TriggerFlag | TriggerSync, dst, dstOffset, src, srcOffset, size, semaphoreId_).value);
+  }
+
   /// Push a @ref TriggerData, a @ref TriggerFlag, and a @ref TriggerSync at the same time to the FIFO.
   /// @param dst The destination memory region.
   /// @param src The source memory region.
@@ -158,6 +169,10 @@ struct ProxyChannelDeviceHandle {
   MSCCLPP_DEVICE_INLINE void flush() {
     uint64_t curFifoHead = fifo_.push(ChannelTrigger(TriggerSync, 0, 0, 0, 0, 1, semaphoreId_).value);
     fifo_.sync(curFifoHead);
+  }
+
+  MSCCLPP_DEVICE_INLINE void clearCQ() {
+    fifo_.push(ChannelTrigger(TriggerSync, 0, 0, 0, 0, 1, semaphoreId_).value);
   }
 
   /// Check if the proxy channel has been signaled.
@@ -193,6 +208,8 @@ struct SimpleProxyChannelDeviceHandle {
   /// Push a @ref TriggerFlag to the FIFO.
   MSCCLPP_DEVICE_INLINE void signal(const uint64_t count = 1) { proxyChan_.signal(count); }
 
+  MSCCLPP_DEVICE_INLINE void signalAndClearCQ(const uint64_t count = 1) { proxyChan_.signalAndClearCQ(count); }
+
   /// Push a @ref TriggerData and a @ref TriggerFlag at the same time to the FIFO.
   /// @param dstOffset The offset into the destination memory region.
   /// @param srcOffset The offset into the source memory region.
@@ -214,6 +231,10 @@ struct SimpleProxyChannelDeviceHandle {
     proxyChan_.putWithSignalAndFlush(dst_, dstOffset, src_, srcOffset, size);
   }
 
+  MSCCLPP_DEVICE_INLINE void putWithSignalAndClearCQ(uint64_t dstOffset, uint64_t srcOffset, uint64_t size) {
+    proxyChan_.putWithSignalAndClearCQ(dst_, dstOffset, src_, srcOffset, size);
+  }
+
   /// Push a @ref TriggerData, a @ref TriggerFlag, and a @ref TriggerSync at the same time to the FIFO.
   /// @param offset The common offset into the destination and source memory regions.
   /// @param size The size of the transfer.
@@ -223,6 +244,8 @@ struct SimpleProxyChannelDeviceHandle {
 
   /// Push a @ref TriggerSync to the FIFO.
   MSCCLPP_DEVICE_INLINE void flush() { proxyChan_.flush(); }
+
+  MSCCLPP_DEVICE_INLINE void clearCQ() { proxyChan_.clearCQ();}
 
   /// Check if the proxy channel has been signaled.
   /// @return true if the proxy channel has been signaled.
