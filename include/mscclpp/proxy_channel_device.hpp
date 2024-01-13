@@ -243,7 +243,7 @@ struct SimpleProxyChannelDeviceHandle {
   }
 
   MSCCLPP_DEVICE_INLINE void putWithSignalAndClearCQ(uint64_t offset, uint64_t size) {
-    putWithSignalAndClearCQ(offset, offset, size);)
+    putWithSignalAndClearCQ(offset, offset, size);
   }
 
   /// Push a @ref TriggerSync to the FIFO.
