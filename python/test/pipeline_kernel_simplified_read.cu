@@ -210,7 +210,8 @@ MSCCLPP_DEVICE_INLINE void
         uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
         for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           if (sloop == 0) send_proxy_channels[i].wait();
-          send_proxy_channels[i].putWithSignalAndFlush(d_start * sizeof(int), size * sizeof(int));
+          else send_proxy_channels[i].flush();
+          send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
         }
       }
     } else {
