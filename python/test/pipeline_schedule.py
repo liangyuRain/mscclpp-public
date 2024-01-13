@@ -13,8 +13,9 @@ from mscclpp.utils import KernelBuilder
 
 
 # KERNEL_FILE = "pipeline_kernel.cu"
+KERNEL_FILE = "pipeline_kernel_read.cu"
 # KERNEL_FILE = "pipeline_kernel_no_divergence.cu"
-KERNEL_FILE = "pipeline_kernel_simplified_read.cu"
+# KERNEL_FILE = "pipeline_kernel_simplified_read.cu"
 
 
 def connect_nvlink(group: mscclpp_comm.CommGroup, remote_nghrs: list):

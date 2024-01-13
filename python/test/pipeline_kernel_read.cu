@@ -43,7 +43,7 @@
 /// @param data_start The data buffer start.
 /// @param nelem_per_send Num of elements in each send.
 /// @param nelem_total Total num of elements need to be send/recv.
-MSCCLPP_DEVICE_INLINE void
+MSCCLPP_DEVICE_INLINE void 
     threadblockCall(mscclpp::SmChannelDeviceHandle* recv_sm_channels, mscclpp::SmChannelDeviceHandle* send_sm_channels,
                     mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channels, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channels,
                     int** recv_scratches, const int nrecv_sm, const int nsend_sm, const int nrecv_proxy, const int nsend_proxy,
@@ -62,128 +62,180 @@ MSCCLPP_DEVICE_INLINE void
 
     int reduced[N_PEERS] = {};
     __shared__ int ready[N_PEERS];
+    __shared__ int shared_sloop; // used to sync sloop across threads if not root
     int pending_sends = 0; // Only reduce node's proxy channel needs to track pending sends.
                            // Only thread(tid=0) needs to track pending sends.
+    int poll_loop_cnt = 0; // Only thread(tid=0) needs to track poll_loop_cnt.
 
     #pragma unroll
     for (int i = tid; i < N_PEERS; i += blockDim.x) ready[i] = 0;
+    if (tid == 0) shared_sloop = (nsend_sm + nsend_proxy > 0 ? 0 : nloops);
     __syncthreads();
 
     const int max_pending_sends = scratch_size / nelem_per_send;
 
-    int min_ready = 0;
-    for (int loop = 0; loop < nloops; ++loop) {
-      if (nrecv_sm + nrecv_proxy > 0) {
-        const uint64_t s_start = (loop % max_pending_sends) * nelem_per_send;
-        const uint64_t d_start = data_start + loop * nelem_per_send;
-        const uint64_t d_start4 = d_start / 4;
-        const uint64_t nElem = min(nelem_per_send, data_start + nelem_total - d_start);
-        const uint64_t nElem4 = nElem / 4;
-        const uint64_t nLastElem = nElem % 4;
-        int4* const data4 = (int4*) &data[d_start];
-
-        do {
-          if (min_ready <= loop) {
-            bool hasUpdate;
-            do {
-              hasUpdate = false;
-              for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
-                const int ready_loop = ready[i];
-                if (ready_loop < nloops) {
-                  int update = (i < nrecv_sm ? recv_sm_channels[i].poll(nloops - ready_loop) :
+    int rloop = nrecv_sm + nrecv_proxy > 0 ? 0 : nloops; // progress of recv
+    int sloop = nsend_sm + nsend_proxy > 0 ? 0 : nloops; // progress of send
+    while (rloop < nloops || sloop < nloops) {
+      if (rloop < nloops) {
+        // assert nrecv_sm + nrecv_proxy > 0
+        bool ready_for_reduce = false;
+        for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
+          int ready_loop = ready[i];
+          // if (ready_loop < rloop + 1) {
+          //   const int update = (i < nrecv_sm ? recv_sm_channels[i].poll(rloop + 1 - ready_loop) :
+          //                                      recv_proxy_channels[i - nrecv_sm].poll(rloop + 1 - ready_loop));
+          if (ready_loop < nloops) {
+            const int update = (i < nrecv_sm ? recv_sm_channels[i].poll(nloops - ready_loop) :
                                                recv_proxy_channels[i - nrecv_sm].poll(nloops - ready_loop));
-                  if (update > 0) hasUpdate = true;
-                  ready[i] = ready_loop + update;
-                }
-              }
-            } while (!__syncthreads_or(hasUpdate));
+            if (update > 0) {
+              ready_loop += update;
+              ready[i] = ready_loop;
+            }
           }
+          if (ready_loop > reduced[i]) ready_for_reduce = true;
+        }
 
-          min_ready = nloops;
-          bool chHasUpdate[N_PEERS];
+        if (__syncthreads_or(ready_for_reduce)) {
+          // assert rloop == min(reduced[*])
+          int count[N_PEERS] = {};
+          bool ready_to_send = true;
+          int min_ready = nloops + 1; // min unreduced but ready
+          int max_ready = -1; // max unreduced but ready
           for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
             const int ready_loop = ready[i];
-            if (ready_loop < min_ready) min_ready = ready_loop;
-            if (ready_loop > loop && reduced[i] == loop) {
-              chHasUpdate[i] = true;
-              ++reduced[i];
-            } else {
-              chHasUpdate[i] = false;
+            // assert rloop == min(reduced[*]) <= ready_loop
+            // Note sloop = nloops if nsend_sm + nsend_proxy == 0
+            if (ready_loop <= sloop) ready_to_send = false;
+            if ((count[i] = ready_loop - reduced[i]) > 0) {
+              if (reduced[i] < min_ready) min_ready = reduced[i];
+              if (ready_loop > max_ready) max_ready = ready_loop;
             }
           }
-          for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
-            int4 tmp = data4[offset];
-            for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
-              if (chHasUpdate[i]) {
-                int4 val;
-                if (i < nrecv_sm) val = recv_sm_channels[i].read<int4>(d_start4 + offset);
-                else val = reinterpret_cast<int4*>(&recv_scratches[i][s_start])[offset];
-                tmp.w += val.w;
-                tmp.x += val.x;
-                tmp.y += val.y;
-                tmp.z += val.z;
+          if (max_ready > min_ready) {
+            // Note that ready_to_send does not imply there is data ready for reduce.
+            if (ready_to_send && max_ready > min_ready) {
+              assert(min_ready >= rloop); // min_ready may be larger than rloop: 
+                                          // the peer with ready_loop == rloop may not signal yet.
+              max_ready = min_ready + 1; // reduce and send immediately
+            }
+            for (int k = min_ready; k < max_ready; ++k) {
+              const uint64_t s_start = (k % max_pending_sends) * nelem_per_send;
+              const uint64_t d_start = data_start + k * nelem_per_send;
+              const uint64_t d_start4 = d_start / 4;
+              const uint64_t nElem = min(nelem_per_send, data_start + nelem_total - d_start);
+              const uint64_t nElem4 = nElem / 4;
+              const uint64_t nLastElem = nElem % 4;
+              int4* const data4 = (int4*) &data[d_start];
+              for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
+                int4 tmp = data4[offset];
+                for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
+                  if (reduced[i] <= k && k < reduced[i] + count[i]) {
+                    int4 val;
+                    if (i < nrecv_sm) val = recv_sm_channels[i].read<int4>(d_start4 + offset);
+                    else val = reinterpret_cast<int4*>(&recv_scratches[i][s_start])[offset];
+                    tmp.w += val.w;
+                    tmp.x += val.x;
+                    tmp.y += val.y;
+                    tmp.z += val.z;
+                  }
+                }
+                data4[offset] = tmp;
+              }
+              if (nLastElem > 0 && tid == 0) {
+                assert(k == nloops - 1);
+                int4 tmp = data4[nElem4];
+                for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
+                  if (reduced[i] <= k && k < reduced[i] + count[i]) {
+                    int4 val;
+                    if (i < nrecv_sm) val = recv_sm_channels[i].read<int4>(d_start4 + nElem4);
+                    else val = reinterpret_cast<int4*>(&recv_scratches[i][s_start])[nElem4];
+                    // assert 1 <= nLastElem <= 3
+                    tmp.w += val.w;
+                    if (nLastElem > 1) tmp.x += val.x;
+                    if (nLastElem > 2) tmp.y += val.y;
+                  }
+                }
+                data4[nElem4] = tmp;
               }
             }
-            data4[offset] = tmp;
-          }
-          if (nLastElem > 0 && tid == 0) {
-            assert(loop == nloops - 1);
-            int4 tmp = data4[nElem4];
+            __syncthreads();
+            rloop = nloops;
             for (int i = 0; i < nrecv_sm + nrecv_proxy; ++i) {
-              if (chHasUpdate[i]) {
-                int4 val;
-                if (i < nrecv_sm) val = recv_sm_channels[i].read<int4>(d_start4 + nElem4);
-                else val = reinterpret_cast<int4*>(&recv_scratches[i][s_start])[nElem4];
-                // assert 1 <= nLastElem <= 3
-                tmp.w += val.w;
-                if (nLastElem > 1) tmp.x += val.x;
-                if (nLastElem > 2) tmp.y += val.y;
+              count[i] = min(count[i], max(0, max_ready - reduced[i]));
+              reduced[i] += count[i];
+              if (reduced[i] < rloop) rloop = reduced[i];
+            }
+            // sm_channels do not need to be signaled, because instead of remote writes to
+            // local scratch buffer, we read from remote memory directly.
+            for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) {
+              // assert if min_ready >= max_ready, then min_ready = nloops + 1 and max_ready = -1.
+              if (count[i] > 0) {
+                if (i >= nrecv_sm) {
+                  const int before = reduced[i] - count[i];
+                  if (before > 0 && before / FLUSH_INTERVAL < reduced[i] / FLUSH_INTERVAL) recv_proxy_channels[i - nrecv_sm].flush();
+                  recv_proxy_channels[i - nrecv_sm].signal(count[i]);
+                }
               }
             }
-            data4[nElem4] = tmp;
           }
-          __syncthreads();
-          // sm_channels do not need to be signaled, because instead of remote writes to
-          // local scratch buffer, we read from remote memory directly.
-          for (int i = tid; i < nrecv_proxy; i += blockDim.x) {
-            if (chHasUpdate[i + nrecv_sm]) {
-              if (loop > 0 && loop % FLUSH_INTERVAL == 0) recv_proxy_channels[i].flush();
-              recv_proxy_channels[i].signal();
-            }
-          }
-          __syncthreads();
-        } while (min_ready <= loop);
+          __syncthreads(); // Necessary; otherwise, program can freeze in multirun allreduce.
+        }
       }
 
-      if (nsend_sm + nsend_proxy > 0) {
-        if (node_type == 0) { // root
-          for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal();
-          for (int i = tid; i < nsend_proxy; i += blockDim.x) {
-            uint64_t d_start = data_start + loop * nelem_per_send;
-            uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-            if (loop == 0) send_proxy_channels[i].wait();
-            else if (loop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
-            send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
-          }
-        } else {
-          // assert nsend_sm + nsend_proxy == 1
-          if (tid == 0) {
-            if (nsend_sm == 1) {
-              send_sm_channels[0].signal();
-            } else {
-              if (pending_sends == max_pending_sends) {
-                send_proxy_channels[0].wait();
-                pending_sends -= 1 + send_proxy_channels[0].poll(pending_sends - 1);
-              }
-
-              uint64_t s_start = (loop % max_pending_sends) * nelem_per_send;
-              uint64_t d_start = data_start + loop * nelem_per_send;
-              uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-              if (loop > 0 && loop % FLUSH_INTERVAL == 0) send_proxy_channels[0].flush();
-              send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
-              ++pending_sends;
+      if (nsend_proxy == 1 && rloop < nloops) {
+        if (tid == 0) {
+          if (pending_sends == 0) {
+            poll_loop_cnt = 0;
+          } else {
+            ++poll_loop_cnt;
+            if (poll_loop_cnt >= 10) {
+              pending_sends -= send_proxy_channels[0].poll(pending_sends);
+              poll_loop_cnt = 0;
             }
           }
+        }
+        __syncthreads();
+      }
+
+      if (sloop < rloop) {
+        // assert nsend_sm + nsend_proxy > 0
+        if (node_type == 0) { // root
+          for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(rloop - sloop);
+          for (int loop = sloop; loop < rloop; ++loop) {
+            const uint64_t d_start = data_start + loop * nelem_per_send;
+            const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+            for (int i = tid; i < nsend_proxy; i += blockDim.x) {
+              if (loop == 0) send_proxy_channels[i].wait();
+              else if (loop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
+              send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
+            }
+          }
+          sloop = rloop;
+        } else {
+          if (tid == 0) {
+            if (nsend_sm == 1) {
+              send_sm_channels[0].signal(rloop - sloop);
+              sloop = rloop;
+            } else {
+              if (pending_sends == max_pending_sends) {
+                pending_sends -= send_proxy_channels[0].poll(pending_sends);
+                poll_loop_cnt = 0;
+              }
+              while (pending_sends < max_pending_sends && sloop < rloop) {
+                uint64_t s_start = (sloop % max_pending_sends) * nelem_per_send;
+                uint64_t d_start = data_start + sloop * nelem_per_send;
+                uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+                if (sloop > 0 && sloop % FLUSH_INTERVAL == 0) send_proxy_channels[0].flush();
+                send_proxy_channels[0].putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
+                ++sloop;
+                ++pending_sends;
+              }
+            }
+            shared_sloop = sloop;
+          }
+          __syncthreads();
+          sloop = shared_sloop;
           __syncthreads();
         }
       }
@@ -201,14 +253,13 @@ MSCCLPP_DEVICE_INLINE void
         }
       }
     }
-    __syncthreads();
   } else {
     // assert nrecv_sm + nrecv_proxy <= 1
     if (nrecv_sm == 0 && nrecv_proxy == 0) {
       for (int i = tid; i < nsend_sm; i += blockDim.x) send_sm_channels[i].signal(nloops);
       for (int sloop = 0; sloop < nloops; ++sloop) {
-        uint64_t d_start = data_start + sloop * nelem_per_send;
-        uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
+        const uint64_t d_start = data_start + sloop * nelem_per_send;
+        const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
         for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           if (sloop == 0) send_proxy_channels[i].wait();
           else send_proxy_channels[i].flush();
@@ -222,13 +273,17 @@ MSCCLPP_DEVICE_INLINE void
       if (tid == 0) ready = 0;
       while (sloop < nloops) {
         if (tid == 0) {
+          int ready_loop = sloop;
           if (nrecv_sm == 1) {
-            recv_sm_channels[0].wait();
-            ready = sloop + 1 + recv_sm_channels[0].poll(nloops - sloop - 1);
+            do {
+              ready_loop += recv_sm_channels[0].poll(nloops - ready_loop);
+            } while (ready_loop == sloop);
           } else {
-            recv_proxy_channels[0].wait();
-            ready = sloop + 1 + recv_proxy_channels[0].poll(nloops - sloop - 1);
+            do {
+              ready_loop += recv_proxy_channels[0].poll(nloops - ready_loop);
+            } while (ready_loop == sloop);
           }
+          ready = ready_loop;
         }
         __syncthreads();
         const int ready_loop = ready;
