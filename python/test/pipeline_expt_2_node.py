@@ -125,6 +125,32 @@ if __name__ == "__main__":
                                             else group.my_ib_device(group.my_rank % 8)
                                          for v in remote_nghrs})
 
+    data_lengths = [3 * 2 ** (n - 2) for n in range(10, 31)]
+    send_lengths = [2 ** n for n in range(14, 21)]
+    check_iters = 0
+    warmup_iters = 100
+    bench_iters = 100
+
+    k = 1
+    tree_name = f"symmetric/sym_split2_IB20_NV300_bw_k_{k}_320"
+    if group.my_rank == 0:
+        print(f"tree_file={tree_name}")
+    with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
+        Ts, Cs = pickle.load(f)
+
+    # Allgather
+    for ninstance in [1, 2, 3, 4, 6, 8]:
+        Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
+        run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
+                      connection_types={dest: channel_type(dest) for dest in connections},
+                      data_lengths=data_lengths,
+                      send_lengths=send_lengths,
+                      check_iters=check_iters,
+                      warmup_iters=warmup_iters,
+                      iters=bench_iters)
+        if group.my_rank == 0:
+            print()
+    
     k = 1
     tree_name = f"symmetric/sym_split_IB20_NV300_bw_k_{k}_320"
     if group.my_rank == 0:
@@ -132,40 +158,19 @@ if __name__ == "__main__":
     with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
         Ts, Cs = pickle.load(f)
 
-    data_lengths = [2 ** (n - 2) for n in range(10, 31)]
-    send_lengths = [2 ** n for n in range(14, 20)]
-    check_iters = 10
-    warmup_iters = 100
-    bench_iters = 100
-
-    # Allgather
-    ninstance = 1
-    Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
-    run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
-                  connection_types={dest: channel_type(dest) for dest in connections},
-                  data_lengths=data_lengths,
-                  send_lengths=send_lengths,
-                  check_iters=check_iters,
-                  warmup_iters=warmup_iters,
-                  iters=bench_iters)
-
-    if group.my_rank == 0:
-        print()
-
     # ReduceScatter
-    ninstance = 1
-    Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
-    run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
-                       connection_types={dest: channel_type(dest) for dest in connections},
-                       data_lengths=data_lengths,
-                       send_lengths=send_lengths,
-                       scratch_size=2 ** 20,
-                       check_iters=check_iters,
-                       warmup_iters=warmup_iters,
-                       iters=bench_iters)
-
-    if group.my_rank == 0:
-        print()
+    for ninstance in [1, 2, 3, 4, 6, 8]:
+        Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
+        run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
+                        connection_types={dest: channel_type(dest) for dest in connections},
+                        data_lengths=data_lengths,
+                        send_lengths=send_lengths,
+                        scratch_size=2 ** 24,
+                        check_iters=check_iters,
+                        warmup_iters=warmup_iters,
+                        iters=bench_iters)
+        if group.my_rank == 0:
+            print()
 
     # Allreduce
     ninstance = 1
