@@ -168,4 +168,4 @@ Originally, running `test_pipeline` also has this error. However, after fixing t
 - `cp.cuda.Device(MPI.COMM_WORLD.rank % 8).use()` is necessary; otherwise, all processes may use the same GPU.
 - Proxy must be reconstructed `proxy_service = ProxyService()` for every data size; otherwise, program may hang due to proxy service being reused too many times.
 - Right now, the best 2x A100 node performance is achieved by manually edge-split the topology into local rings and one-to-one inter-node connections. IB bw is set to 20GB/s with NVLink set to 300GB/s, forcing code to use IB as less as possible. The optimal tree for large data sizes appears to be is to generate symmetric k=1 tree and then ninstance=6, achieving 250GB/s algbw at 3GB.
-- Flushing proxy channel more frequently seems to improve (allgather) performance.
+- Flushing proxy channel more frequently seems to improve (allgather) performance. Turns out it is beneficial to do `putWithSignalAndFlush` at allgather root.
