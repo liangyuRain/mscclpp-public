@@ -242,6 +242,10 @@ struct SimpleProxyChannelDeviceHandle {
     putWithSignalAndFlush(offset, offset, size);
   }
 
+  MSCCLPP_DEVICE_INLINE void putWithSignalAndClearCQ(uint64_t offset, uint64_t size) {
+    putWithSignalAndClearCQ(offset, offset, size);)
+  }
+
   /// Push a @ref TriggerSync to the FIFO.
   MSCCLPP_DEVICE_INLINE void flush() { proxyChan_.flush(); }
 
