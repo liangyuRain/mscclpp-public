@@ -101,7 +101,8 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
     proxy_service = ProxyService()
 
-    max_length = max(math.ceil(length / (k * group.nranks)) * (k * group.nranks) for length in data_lengths)
+    max_length = max(math.ceil(length / (4 * k * group.nranks)) * (4 * k * group.nranks)
+                     for length in data_lengths)
     data = cp.empty(max_length, dtype=cp.int32)
     kernel = allreduce_kernel(Ts, Cs, k,
                               group=group,
@@ -115,7 +116,7 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
     for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
         if length % (k * group.nranks) != 0:
-            length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
+            length = math.ceil(length / (4 * k * group.nranks)) * (4 * k * group.nranks)
 
         if check_iters > 0:
             init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
@@ -147,7 +148,8 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
     proxy_service = ProxyService()
 
-    max_length = max(math.ceil(length / (k * group.nranks)) * (k * group.nranks) for length in data_lengths)
+    max_length = max(math.ceil(length / (4 * k * group.nranks)) * (4 * k * group.nranks)
+                     for length in data_lengths)
     data = cp.empty(max_length, dtype=cp.int32)
     kernel = allgather_kernel(Ts, Cs, k,
                               group=group,
@@ -160,7 +162,7 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
     for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
         if length % (k * group.nranks) != 0:
-            length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
+            length = math.ceil(length / (4 * k * group.nranks)) * (4 * k * group.nranks)
 
         if check_iters > 0:
             init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
@@ -193,7 +195,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 
     proxy_service = ProxyService()
 
-    max_length = max(math.ceil(length / (k * group.nranks)) * (k * group.nranks) for length in data_lengths)
+    max_length = max(math.ceil(length / (4 * k * group.nranks)) * (4 * k * group.nranks)
+                     for length in data_lengths)
     data = cp.empty(max_length, dtype=cp.int32)
     kernel = reduce_scatter_kernel(Ts, Cs, k,
                                    group=group,
@@ -207,7 +210,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 
     for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
         if length % (k * group.nranks) != 0:
-            length = math.ceil(length / (k * group.nranks)) * (k * group.nranks)
+            length = math.ceil(length / (4 * k * group.nranks)) * (4 * k * group.nranks)
         
         assert length % group.nranks == 0
         shard_size = length // group.nranks
