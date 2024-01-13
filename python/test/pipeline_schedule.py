@@ -260,7 +260,7 @@ def make_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, co
     recv_sm_scratches, recv_proxy_scratches = ([], []) if scratch_size is not None else (None, None)
     for dest in recv_peers:
         connect = connections[dest]
-        recv_buf = cp.zeros(scratch_size, dtype=cp.int32) if scratch_size is not None else data
+        recv_buf = cp.empty(scratch_size, dtype=cp.int32) if scratch_size is not None else data
         if connection_types[dest] == "sm":
             assert connect.transport() == Transport.CudaIpc
             if scratch_size is not None:
