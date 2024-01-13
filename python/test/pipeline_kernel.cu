@@ -11,7 +11,7 @@
 #define N_PEERS 8
 #endif
 
-# define FLUSH_INTERVAL 10
+# define FLUSH_INTERVAL 100
 
 // END_DEFINES //
 
@@ -219,8 +219,7 @@ MSCCLPP_DEVICE_INLINE void
         const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
         for (int i = tid; i < nsend_proxy; i += blockDim.x) {
           if (sloop == 0) send_proxy_channels[i].wait();
-          else if (sloop % FLUSH_INTERVAL == 0) send_proxy_channels[i].flush();
-          send_proxy_channels[i].putWithSignal(d_start * sizeof(int), size * sizeof(int));
+          send_proxy_channels[i].putWithSignalAndFlush(d_start * sizeof(int), size * sizeof(int));
         }
       }
     } else {
