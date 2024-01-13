@@ -402,7 +402,7 @@ def test_root2(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scrat
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
-@pytest.mark.parametrize("allreduce_length", [96, 2 ** 20])
+@pytest.mark.parametrize("allreduce_length", [128, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
@@ -447,7 +447,7 @@ def test_allpair_allreduce(mpi_group: MpiGroup, nelem_per_send: int, allreduce_l
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
-@pytest.mark.parametrize("allreduce_length", [96, 2 ** 20])
+@pytest.mark.parametrize("allreduce_length", [128, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
@@ -643,7 +643,7 @@ def test_vary_size_allreduce(nelem_per_send: int, scratch_size: int, sm_node_siz
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
-@pytest.mark.parametrize("allgather_length", [96, 2 ** 20])
+@pytest.mark.parametrize("allgather_length", [128, 2 ** 20])
 @pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 def test_allpair_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_length: int,
@@ -686,7 +686,7 @@ def test_allpair_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_l
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
-@pytest.mark.parametrize("allgather_length", [96, 2 ** 20])
+@pytest.mark.parametrize("allgather_length", [128, 2 ** 20])
 @pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 def test_ring_allgather(mpi_group: MpiGroup, nelem_per_send: int, allgather_length: int,
@@ -824,7 +824,7 @@ def test_multrun_allgather(nelem_per_send: int, allgather_length: int, iters: in
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
-@pytest.mark.parametrize("reduce_scatter_length", [96, 2 ** 20])
+@pytest.mark.parametrize("reduce_scatter_length", [128, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
@@ -873,7 +873,7 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
 
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
-@pytest.mark.parametrize("reduce_scatter_length", [96, 2 ** 20])
+@pytest.mark.parametrize("reduce_scatter_length", [128, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])

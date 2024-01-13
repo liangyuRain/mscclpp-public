@@ -13,8 +13,8 @@ from mscclpp.utils import KernelBuilder
 
 
 # KERNEL_FILE = "pipeline_kernel.cu"
-KERNEL_FILE = "pipeline_kernel_no_divergence.cu"
-# KERNEL_FILE = "pipeline_kernel_simplified.cu"
+# KERNEL_FILE = "pipeline_kernel_no_divergence.cu"
+KERNEL_FILE = "pipeline_kernel_simplified_read.cu"
 
 
 def connect_nvlink(group: mscclpp_comm.CommGroup, remote_nghrs: list):
@@ -200,6 +200,7 @@ class PipelineKernel:
     def prepare_params(self, nelem_total, nelem_per_send):
         assert not self.use_schatch or nelem_per_send <= self.scratch_size
         assert nelem_total <= self.data.shape[0]
+        assert nelem_per_send % 4 == 0  # aligned by int4
 
         if nelem_total in self._data_starts_nelem_totals:
             data_starts, nelem_totals = self._data_starts_nelem_totals[nelem_total]
@@ -207,6 +208,7 @@ class PipelineKernel:
             assert nelem_total % self.total_chunks == 0
             nelem_per_chunk = nelem_total // self.total_chunks
 
+            assert all(self.data_chunk_offsets[bid] * nelem_per_chunk % 4 == 0 for bid in range(self.nblocks))  # aligned by int4
             data_starts = cp.array([self.data_chunk_offsets[bid] * nelem_per_chunk for bid in range(self.nblocks)], dtype=cp.uint64)
             nelem_totals = cp.array([self.data_chunk_sizes[bid] * nelem_per_chunk for bid in range(self.nblocks)], dtype=cp.uint64)
             self._data_starts_nelem_totals[nelem_total] = (data_starts, nelem_totals)
