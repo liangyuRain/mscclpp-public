@@ -312,7 +312,7 @@ class ReduceScatterPipelineKernel:
             nrecv_proxy = len(recv_proxy_channels.get(tree, []))
             nrecv_peers = nrecv_sm + nrecv_proxy
             assert nrecv_peers <= n_peers
-            assert len(send_sm_channels.get(tree, []) + len(send_proxy_channels.get(tree, []))) <= 1
+            assert len(send_sm_channels.get(tree, [])) + len(send_proxy_channels.get(tree, [])) <= 1
             send_sm = len(send_sm_channels.get(tree, [])) > 0
             send_proxy = len(send_proxy_channels.get(tree, [])) > 0
             assert send_sm or send_proxy or nrecv_peers > 0
@@ -329,10 +329,10 @@ class ReduceScatterPipelineKernel:
                 recv_proxy_handles_arr += [ch.device_handle().raw for ch in recv_proxy_channels.get(tree, [])]
                 send_proxy_handles_arr += [ch.device_handle().raw for ch in send_proxy_channels.get(tree, [])]
 
-                assert len(recv_sm_scratches[tree]) == nrecv_sm
-                assert len(recv_proxy_scratches[tree]) == nrecv_proxy
-                recv_scratches_arr += [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_sm_scratches[tree]] + \
-                                      [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_proxy_scratches[tree]]
+                assert len(recv_sm_scratches.get(tree, [])) == nrecv_sm
+                assert len(recv_proxy_scratches.get(tree, [])) == nrecv_proxy
+                recv_scratches_arr += [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_sm_scratches.get(tree, [])] + \
+                                      [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_proxy_scratches.get(tree, [])]
                 
                 reduce_locks = cp.empty(MAX_NLOOPS, dtype=cp.int32)
                 reduce_counts = cp.empty(MAX_NLOOPS, dtype=cp.int32)
@@ -357,8 +357,8 @@ class ReduceScatterPipelineKernel:
                 send_sm_handles_arr += [ch.device_handle().raw for ch in send_sm_channels.get(tree, [])]
                 send_proxy_handles_arr += [ch.device_handle().raw for ch in send_proxy_channels.get(tree, [])]
 
-                assert tree not in recv_sm_scratches[tree]
-                assert tree not in recv_proxy_scratches[tree]
+                assert tree not in recv_sm_scratches
+                assert tree not in recv_proxy_scratches
                 recv_scratches_arr += [struct.pack("P", 0)]
 
                 reduce_locks_arr += [null_buf]
@@ -386,15 +386,18 @@ class ReduceScatterPipelineKernel:
         send_sm_channel_indics = cp.array(send_sm_channel_indics, dtype=cp.int32)
         recv_proxy_channel_indics = cp.array(recv_proxy_channel_indics, dtype=cp.int32)
         send_proxy_channel_indics = cp.array(send_proxy_channel_indics, dtype=cp.int32)
-        reduce_locks_arr_mem = cp.asarray(memoryview(b"".join([struct.pack("P", arr.data.ptr) for arr in reduce_locks_arr])), dtype=cp.int32)
-        reduce_counts_arr_mem = cp.asarray(memoryview(b"".join([struct.pack("P", arr.data.ptr) for arr in reduce_counts_arr])), dtype=cp.int32)
+        reduce_locks_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in reduce_locks_arr]
+        reduce_locks_arr_mem = cp.asarray(memoryview(b"".join(reduce_locks_ptr_arr)), dtype=cp.uint8)
+        reduce_counts_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in reduce_counts_arr]
+        reduce_counts_arr_mem = cp.asarray(memoryview(b"".join(reduce_counts_ptr_arr)), dtype=cp.uint8)
         nrecv_peers_arr = cp.array(nrecv_peers_arr, dtype=cp.int32)
-        sent_progress_arr_mem = cp.asarray(memoryview(b"".join([struct.pack("P", arr.data.ptr) for arr in sent_progress_arr])), dtype=cp.int32)
-        first_block_arr = cp.array(first_block_arr, dtype=cp.bool)
+        sent_progress_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in sent_progress_arr]
+        sent_progress_arr_mem = cp.asarray(memoryview(b"".join(sent_progress_ptr_arr)), dtype=cp.uint8)
+        first_block_arr = cp.array(first_block_arr, dtype=cp.bool_)
 
         assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
         assert len(recv_proxy_handles_arr) == n_recv_proxy_channels and len(send_proxy_handles_arr) == n_send_proxy_channels
-        assert len(recv_scratches_arr) == n_recv_sm_channels + n_recv_proxy_channels == self.nblocks
+        assert len(recv_scratches_arr) == self.nblocks
         assert recv_sm_channel_indics.shape[0] == self.nblocks
         assert send_sm_channel_indics.shape[0] == self.nblocks
         assert recv_proxy_channel_indics.shape[0] == self.nblocks
@@ -422,10 +425,11 @@ class ReduceScatterPipelineKernel:
                       recv_proxy_channels, send_proxy_channels,
                       recv_sm_handles_mem, send_sm_handles_mem,
                       recv_proxy_handles_mem, send_proxy_handles_mem,
-                      data, recv_sm_scratches, recv_proxy_scratches, recv_scratches_mem, recv_scratches_arr
+                      data, recv_sm_scratches, recv_proxy_scratches, recv_scratches_mem, recv_scratches_arr,
                       recv_sm_channel_indics, send_sm_channel_indics,
                       recv_proxy_channel_indics, send_proxy_channel_indics,
                       reduce_locks_arr, reduce_counts_arr, nrecv_peers_arr, sent_progress_arr,
+                      reduce_locks_ptr_arr, reduce_counts_ptr_arr, sent_progress_ptr_arr,
                       reduce_locks_arr_mem, reduce_counts_arr_mem, sent_progress_arr_mem,
                       first_block_arr]
         self._data_starts_nelem_totals = {}

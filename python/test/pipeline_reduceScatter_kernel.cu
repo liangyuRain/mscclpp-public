@@ -47,7 +47,7 @@ MSCCLPP_DEVICE_INLINE void
 
   if (tid == 0) {
     ready = (recv_sm || recv_proxy ? 0 : nloops);
-    sent = (recv_sm || send_proxy ? 0 : nloops);
+    sent = (send_sm || send_proxy ? 0 : nloops);
 
     if (!recv_sm && !recv_proxy && send_sm) {
       send_sm_channel->signal(nloops);
@@ -61,6 +61,7 @@ MSCCLPP_DEVICE_INLINE void
 
   while (reduced < nloops || sent < nloops) {
     if (received < nloops) {
+      // assert recv_sm or recv_proxy
       int ready_local = ready;
       if (ready_local == received) {
         if (tid == 0) {
@@ -82,7 +83,7 @@ MSCCLPP_DEVICE_INLINE void
           const uint64_t s_start = (received % max_pending_sends) * nelem_per_send;
           const uint64_t d_start = data_start + received * nelem_per_send;
           const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
-          recv_sm_channel->get(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
+          recv_sm_channel->get(d_start * sizeof(int), s_start * sizeof(int), size * sizeof(int), tid, blockDim.x);
           ++received;
         } else {
           received = ready_local;
@@ -105,19 +106,19 @@ MSCCLPP_DEVICE_INLINE void
         for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
           int4 tmp = data4[offset];
           int4 val = recv_sm_channel->read<int4>(d_start4 + offset);
-          tmp.w += val.w;
           tmp.x += val.x;
           tmp.y += val.y;
           tmp.z += val.z;
+          tmp.w += val.w;
           data4[offset] = tmp;
         }
         if (nLastElem > 0 && tid == 0) {
           int4 tmp = data4[nElem4];
-          int4 val = recv_sm_channel.read<int4>(d_start4 + nElem4);
+          int4 val = recv_sm_channel->read<int4>(d_start4 + nElem4);
           // assert 1 <= nLastElem <= 3
-          tmp.w += val.w;
-          if (nLastElem > 1) tmp.x += val.x;
-          if (nLastElem > 2) tmp.y += val.y;
+          tmp.x += val.x;
+          if (nLastElem > 1) tmp.y += val.y;
+          if (nLastElem > 2) tmp.z += val.z;
           data4[nElem4] = tmp;
         }
         ready_to_send_sm = true;
@@ -127,25 +128,25 @@ MSCCLPP_DEVICE_INLINE void
         __shared__ int lock_status;
         if (tid == 0) lock_status = atomicCAS(&reduce_locks[reduced], 0, 1);
         __syncthreads();
-        if (!lock_status) {
+        if (lock_status == 0) {
           __threadfence();
           int4* const scratch4 = reinterpret_cast<int4*>(&recv_scratch[s_start]);
           for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
             int4 tmp = data4[offset];
             int4 val = scratch4[offset];
-            tmp.w += val.w;
             tmp.x += val.x;
             tmp.y += val.y;
             tmp.z += val.z;
+            tmp.w += val.w;
             data4[offset] = tmp;
           }
           if (nLastElem > 0 && tid == 0) {
             int4 tmp = data4[nElem4];
             int4 val = scratch4[nElem4];
             // assert 1 <= nLastElem <= 3
-            tmp.w += val.w;
-            if (nLastElem > 1) tmp.x += val.x;
-            if (nLastElem > 2) tmp.y += val.y;
+            tmp.x += val.x;
+            if (nLastElem > 1) tmp.y += val.y;
+            if (nLastElem > 2) tmp.z += val.z;
             data4[nElem4] = tmp;
           }
 
@@ -174,7 +175,7 @@ MSCCLPP_DEVICE_INLINE void
         int sent_local = sent;
         if (sent_local < reduced) {
           bool ready_to_send_proxy = false;
-          if (nrecv_peers == 1) {
+          if (nrecv_peers <= 1) {
             ready_to_send_proxy = true;
           } else {
             do {
@@ -193,7 +194,7 @@ MSCCLPP_DEVICE_INLINE void
               pending_sends -= send_proxy_channel->poll(pending_sends);
             }
             if (pending_sends < max_pending_sends) {
-              const int64_t s_start = (sent_local % max_pending_sends) * nelem_per_send;
+              const uint64_t s_start = (sent_local % max_pending_sends) * nelem_per_send;
               const uint64_t d_start = data_start + sent_local * nelem_per_send;
               const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
               if (sent_local > 0 && sent_local % FLUSH_INTERVAL == 0) send_proxy_channel->flush();
@@ -208,7 +209,18 @@ MSCCLPP_DEVICE_INLINE void
       __syncthreads();
     }
   }
-
+  if (tid == 0) {
+    if (recv_sm) recv_sm_channel->signal();
+    if (send_sm) send_sm_channel->wait();
+    if (recv_proxy) recv_proxy_channel->flush();
+    if (send_proxy) {
+      do {
+        pending_sends -= send_proxy_channel->poll(pending_sends);
+      } while (pending_sends > 0);
+      send_proxy_channel->flush();
+    }
+  }
+  __syncthreads();
 }
 
 __device__ mscclpp::DeviceSyncer deviceSyncer;
@@ -216,21 +228,21 @@ __device__ mscclpp::DeviceSyncer deviceSyncer;
 MSCCLPP_DEVICE_INLINE void zero_memory(int* data, const uint64_t nelem) {
   const int tid = threadIdx.x;
   int4* data4 = reinterpret_cast<int4*>(data);
-  const uint64_t nElem4 = nElem / 4;
-  const uint64_t nLastElem = nElem % 4;
-  for (uint64_t off = tid; off < nElem4; off += blockDim.x) {
+  const uint64_t nElem4 = nelem / 4;
+  const uint64_t nLastElem = nelem % 4;
+  for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
     int4 tmp = data4[offset];
-    tmp.w = 0;
     tmp.x = 0;
     tmp.y = 0;
     tmp.z = 0;
+    tmp.w = 0;
     data4[offset] = tmp;
   }
   if (nLastElem > 0 && tid == 0) {
     int4 tmp = data4[nElem4];
-    tmp.w = 0;
-    if (nLastElem > 1) tmp.x = 0;
-    if (nLastElem > 2) tmp.y = 0;
+    tmp.x = 0;
+    if (nLastElem > 1) tmp.y = 0;
+    if (nLastElem > 2) tmp.z = 0;
     data4[nElem4] = tmp;
   }
 }
