@@ -134,10 +134,10 @@ MSCCLPP_DEVICE_INLINE void
                     int4 val;
                     if (i < nrecv_sm) val = recv_sm_channels[i].read<int4>(d_start4 + offset);
                     else val = reinterpret_cast<int4*>(&recv_scratches[i][s_start])[offset];
-                    tmp.w += val.w;
                     tmp.x += val.x;
                     tmp.y += val.y;
                     tmp.z += val.z;
+                    tmp.w += val.w;
                   }
                 }
                 data4[offset] = tmp;
@@ -151,9 +151,9 @@ MSCCLPP_DEVICE_INLINE void
                     if (i < nrecv_sm) val = recv_sm_channels[i].read<int4>(d_start4 + nElem4);
                     else val = reinterpret_cast<int4*>(&recv_scratches[i][s_start])[nElem4];
                     // assert 1 <= nLastElem <= 3
-                    tmp.w += val.w;
-                    if (nLastElem > 1) tmp.x += val.x;
-                    if (nLastElem > 2) tmp.y += val.y;
+                    tmp.x += val.x;
+                    if (nLastElem > 1) tmp.y += val.y;
+                    if (nLastElem > 2) tmp.z += val.z;
                   }
                 }
                 data4[nElem4] = tmp;

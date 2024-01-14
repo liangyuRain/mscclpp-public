@@ -97,10 +97,10 @@ MSCCLPP_DEVICE_INLINE void
               int4* const data4 = (int4*) &data[d_start];
               int4* const scratch4 = (int4*) &recv_scratches[i][s_start];
               for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
-                data4[offset].w += scratch4[offset].w;
                 data4[offset].x += scratch4[offset].x;
                 data4[offset].y += scratch4[offset].y;
                 data4[offset].z += scratch4[offset].z;
+                data4[offset].w += scratch4[offset].w;
               }
               for (uint64_t offset = tid; offset < nLastElem; offset += blockDim.x) {
                 data[d_start + nElem4 * 4 + offset] += recv_scratches[i][s_start + nElem4 * 4 + offset];
