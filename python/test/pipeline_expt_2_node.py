@@ -7,19 +7,13 @@ from mpi4py import MPI
 import os
 
 import mscclpp.comm as mscclpp_comm
-from pipeline_schedule import (
-    PipelineKernel,
-    allreduce_kernel,
-    allgather_kernel,
-    reduce_scatter_kernel,
-    connect_nvlink,
-    KERNEL_FILE,
-)
+from pipeline_schedule import PipelineKernel
 from pipeline_expt import (
     print_row, 
     run_allgather, 
     run_reduce_scatter, 
     run_allreduce,
+    run_fusion_allreduce,
 )
 from mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService, Transport
@@ -131,16 +125,16 @@ if __name__ == "__main__":
     warmup_iters = 100
     bench_iters = 100
 
-    k = 1
-    tree_name = f"symmetric/sym_split2_IB20_NV300_bw_k_{k}_320"
+    AG_k = 1
+    AG_tree_name = f"symmetric/sym_split2_IB20_NV300_bw_k_{AG_k}_320"
     if group.my_rank == 0:
-        print(f"tree_file={tree_name}")
-    with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
-        Ts, Cs = pickle.load(f)
+        print(f"AG_tree_file={AG_tree_name}")
+    with open(f"/root/mscclpp-public/trees/{AG_tree_name}.pkl", "rb") as f:
+        AG_Ts, AG_Cs = pickle.load(f)
 
     # Allgather
     for ninstance in [1, 2, 3, 4, 6, 8]:
-        Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
+        Tsp, Csp, kp = multi_instance(AG_Ts, AG_Cs, AG_k, ninstance)
         run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
                       connection_types={dest: channel_type(dest) for dest in connections},
                       data_lengths=data_lengths,
@@ -151,37 +145,41 @@ if __name__ == "__main__":
         if group.my_rank == 0:
             print()
     
-    k = 1
-    tree_name = f"symmetric/sym_split_IB20_NV300_bw_k_{k}_320"
+    RS_k = 1
+    RS_tree_name = f"symmetric/sym_split_IB20_NV300_bw_k_{RS_k}_320"
     if group.my_rank == 0:
-        print(f"tree_file={tree_name}")
-    with open(f"/root/mscclpp-public/trees/{tree_name}.pkl", "rb") as f:
-        Ts, Cs = pickle.load(f)
+        print(f"RS_tree_file={RS_tree_name}")
+    with open(f"/root/mscclpp-public/trees/{RS_tree_name}.pkl", "rb") as f:
+        RS_Ts, RS_Cs = pickle.load(f)
 
     # ReduceScatter
     for ninstance in [1, 2, 3, 4, 6, 8]:
-        Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
+        Tsp, Csp, kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
         run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
-                        connection_types={dest: channel_type(dest) for dest in connections},
-                        data_lengths=data_lengths,
-                        send_lengths=send_lengths,
-                        scratch_size=2 ** 24,
-                        check_iters=check_iters,
-                        warmup_iters=warmup_iters,
-                        iters=bench_iters)
+                           connection_types={dest: channel_type(dest) for dest in connections},
+                           data_lengths=data_lengths,
+                           send_lengths=send_lengths,
+                           scratch_size=2 ** 24,
+                           check_iters=check_iters,
+                           warmup_iters=warmup_iters,
+                           iters=bench_iters)
         if group.my_rank == 0:
             print()
 
     # Allreduce
-    ninstance = 1
-    Tsp, Csp, kp = multi_instance(Ts, Cs, k, ninstance)
-    run_allreduce(Tsp, Csp, kp, group=group, connections=connections, 
-                  connection_types={dest: channel_type(dest) for dest in connections},
-                  data_lengths=data_lengths,
-                  send_lengths=send_lengths,
-                  scratch_size=2 ** 20,
-                  check_iters=check_iters,
-                  warmup_iters=warmup_iters,
-                  iters=bench_iters)
+    for ninstance in [1, 2, 3, 4, 6, 8]:
+        RS_Tsp, RS_Csp, RS_kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
+        AG_Tsp, AG_Csp, AG_kp = multi_instance(AG_Ts, AG_Cs, AG_k, ninstance)
+        run_fusion_allreduce(RS_Tsp, RS_Csp, RS_kp, AG_Tsp, AG_Csp, AG_kp,
+                             group=group, connections=connections, 
+                             connection_types={dest: channel_type(dest) for dest in connections},
+                             data_lengths=data_lengths,
+                             send_lengths=send_lengths,
+                             scratch_size=2 ** 24,
+                             check_iters=check_iters,
+                             warmup_iters=warmup_iters,
+                             iters=bench_iters)
+        if group.my_rank == 0:
+            print()
 
     del group
