@@ -63,9 +63,11 @@ class PipelineKernel:
         n_send_proxy_channels = sum(len(l) for l in send_proxy_channels.values())
         assert n_recv_proxy_channels + n_send_proxy_channels <= 128, "see https://github.com/microsoft/mscclpp/issues/242"
         file_dir = os.path.dirname(os.path.abspath(__file__))
+        self.kernel_file = KERNEL_FILE
+        self.kernel_name = "pipeline_schedule"
         self._kernel = KernelBuilder(
-            file=KERNEL_FILE,
-            kernel_name="pipeline_schedule",
+            file=self.kernel_file,
+            kernel_name=self.kernel_name,
             file_dir=file_dir,
         ).get_compiled_kernel()
         self.nblocks = nblocks
@@ -263,9 +265,11 @@ class ReduceScatterPipelineKernel:
         n_send_proxy_channels = sum(len(l) for l in send_proxy_channels.values())
         assert n_recv_proxy_channels + n_send_proxy_channels <= 128, "see https://github.com/microsoft/mscclpp/issues/242"
         file_dir = os.path.dirname(os.path.abspath(__file__))
+        self.kernel_file = REDUCE_SCATTER_KERNEL_FILE
+        self.kernel_name = "pipeline_reduceScatter_schedule"
         self._kernel = KernelBuilder(
-            file=REDUCE_SCATTER_KERNEL_FILE,
-            kernel_name="pipeline_reduceScatter_schedule",
+            file=self.kernel_file,
+            kernel_name=self.kernel_name,
             file_dir=file_dir,
         ).get_compiled_kernel()
         self.nthreads = nthreads

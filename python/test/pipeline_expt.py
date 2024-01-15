@@ -12,7 +12,6 @@ from pipeline_schedule import (
     allgather_kernel,
     reduce_scatter_kernel,
     connect_nvlink,
-    KERNEL_FILE,
 )
 from mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService
@@ -90,15 +89,6 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, send_lengths: list, scratch_size: int,
                   check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
-    if group.my_rank == 0:
-        print("#" * 55 + " Allreduce " + "#" * 55)
-        print(f"nranks={group.nranks}")
-        print(f"k={k}, scratch_size={scratch_size}")
-        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
-        print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
-        print()
-        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
-
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -111,6 +101,15 @@ def run_allreduce(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                               data=data,
                               scratch_size=scratch_size,
                               proxy_service=proxy_service)
+
+    if group.my_rank == 0:
+        print("#" * 55 + " Allreduce " + "#" * 55)
+        print(f"nranks={group.nranks}")
+        print(f"k={k}, scratch_size={scratch_size}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}, BENCH_METHOD={BENCH_METHOD}")
+        print()
+        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
 
     proxy_service.start_proxy()
 
@@ -137,15 +136,6 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, send_lengths: list, check_iters: int = 10,
                   warmup_iters: int = 10, iters: int = 10):
-    if group.my_rank == 0:
-        print("#" * 55 + " Allgather " + "#" * 55)
-        print(f"nranks={group.nranks}")
-        print(f"k={k}")
-        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
-        print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
-        print()
-        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
-
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -157,6 +147,15 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                               connection_types=connection_types,
                               data=data,
                               proxy_service=proxy_service)
+
+    if group.my_rank == 0:
+        print("#" * 55 + " Allgather " + "#" * 55)
+        print(f"nranks={group.nranks}")
+        print(f"k={k}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}, BENCH_METHOD={BENCH_METHOD}")
+        print()
+        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
 
     proxy_service.start_proxy()
 
@@ -183,16 +182,8 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                        connections: dict, connection_types: dict,
                        data_lengths: list, send_lengths: list, scratch_size: int,
-                       check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
-    if group.my_rank == 0:
-        print("#" * 53 + " ReduceScatter " + "#" * 53)
-        print(f"nranks={group.nranks}")
-        print(f"k={k}, scratch_size={scratch_size}")
-        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
-        print(f"KERNEL_FILE={KERNEL_FILE}, BENCH_METHOD={BENCH_METHOD}")
-        print()
-        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
-
+                       check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
+                       use_reduceScatter_kernel=True):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -204,7 +195,17 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                    connection_types=connection_types,
                                    data=data,
                                    scratch_size=scratch_size,
-                                   proxy_service=proxy_service)
+                                   proxy_service=proxy_service,
+                                   use_reduceScatter_kernel=use_reduceScatter_kernel)
+    
+    if group.my_rank == 0:
+        print("#" * 53 + " ReduceScatter " + "#" * 53)
+        print(f"nranks={group.nranks}")
+        print(f"k={k}, scratch_size={scratch_size}")
+        print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}, BENCH_METHOD={BENCH_METHOD}")
+        print()
+        print_row("size(B)", "send_size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
 
     proxy_service.start_proxy()
 
@@ -283,7 +284,8 @@ if __name__ == "__main__":
                        scratch_size=2 ** 20,
                        check_iters=check_iters,
                        warmup_iters=warmup_iters,
-                       iters=bench_iters)
+                       iters=bench_iters,
+                       use_reduceScatter_kernel=True)
 
     if group.my_rank == 0:
         print()
