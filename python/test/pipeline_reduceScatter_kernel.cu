@@ -23,7 +23,7 @@ MSCCLPP_DEVICE_INLINE void
                     mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channel, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel,
                     int* recv_scratch, const bool recv_sm, const bool send_sm, const bool recv_proxy, const bool send_proxy,
                     const uint64_t scratch_size, int* data,
-                    int* reduce_locks, int* reduce_counts, const int nrecv_peers, const bool is_first_block,
+                    int* reduce_counts, const int nrecv_peers, const bool is_first_block,
                     const uint64_t data_start, const uint64_t nelem_per_send, const uint64_t nelem_total, const uint64_t debug_flag) {
   const int tid = threadIdx.x;
 
@@ -42,28 +42,27 @@ MSCCLPP_DEVICE_INLINE void
     assert(!recv_sm || !recv_proxy);
   }
 
-  __shared__ int ready;
-  __shared__ int sent;
-
-  if (tid == 0) {
-    ready = (recv_sm || recv_proxy ? 0 : nloops);
-    if (is_first_block) {
-      if (!recv_sm && !recv_proxy && send_sm) {
-        send_sm_channel->signal(nloops);
-        sent = nloops;
-      } else {
-        sent = (send_sm || send_proxy ? 0 : nloops);
-      }
-    } else {
-      sent = nloops;
-    }
-  }
-  __syncthreads();
-
-  int sent_local = sent; // only thread 0 can write sent
-                         // thread 0 guarantees sent_local == sent
   int received = (recv_sm || recv_proxy ? 0 : nloops);
   int reduced = (recv_sm || recv_proxy ? 0 : nloops);
+
+  int sent_local;
+  if (is_first_block) {
+    if (!recv_sm && !recv_proxy && send_sm) {
+      if (tid == 0) send_sm_channel->signal(nloops);
+      sent_local = nloops;
+    } else {
+      sent_local = (send_sm || send_proxy ? 0 : nloops);
+    }
+  } else {
+    sent_local = nloops;
+  }
+
+  __shared__ int ready;
+  __shared__ int sent;
+  if (tid == 0) {
+    ready = (recv_sm || recv_proxy ? 0 : nloops);
+    sent = sent_local;
+  }
   __syncthreads();
 
   while (reduced < nloops || sent_local < nloops) {
@@ -130,11 +129,10 @@ MSCCLPP_DEVICE_INLINE void
         ++reduced;
       } else {
         // Try lock
-        __shared__ int lock_status;
-        if (tid == 0) lock_status = atomicCAS(&reduce_locks[reduced], 0, 1);
+        __shared__ int re_cnt;
+        if (tid == 0) re_cnt = atomicExch(&reduce_counts[reduced], -1); // Try lock
         __syncthreads();
-        if (lock_status == 0) {
-          __threadfence();
+        if (re_cnt >= 0) {
           int4* const scratch4 = reinterpret_cast<int4*>(&recv_scratch[s_start]);
           for (uint64_t offset = tid; offset < nElem4; offset += blockDim.x) {
             int4 tmp = data4[offset];
@@ -158,12 +156,12 @@ MSCCLPP_DEVICE_INLINE void
           // Unlock
           __syncthreads();
           if (tid == 0) {
-            ++reduce_counts[reduced];
+            __threadfence();
+            *((volatile int*) &reduce_counts[reduced]) = re_cnt + 1;
             if (recv_proxy) {
               if (reduced > 0 && reduced % FLUSH_INTERVAL == 0) recv_proxy_channel->flush();
               recv_proxy_channel->signal();
             }
-            atomicExch(&reduce_locks[reduced], 0);
           }
           ++reduced;
         }
@@ -173,15 +171,16 @@ MSCCLPP_DEVICE_INLINE void
 
     if (sent_local < reduced) {
       // assert is_first_block
+      // assert send_sm or send_proxy
       if (tid == 0) {
-        __threadfence();
-        if (send_sm) {
-          while (sent_local < reduced && (nrecv_peers <= 1 || reduce_counts[sent_local] == nrecv_peers)) {
-            send_sm_channel->signal();
-            ++sent_local;
-          }
-        } else {
-          if (nrecv_peers <= 1 || reduce_counts[sent_local] == nrecv_peers) {
+        if (nrecv_peers <= 1 || *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers) {
+          if (send_sm) {
+            do {
+              send_sm_channel->signal();
+              ++sent_local;
+            } while (sent_local < reduced && (nrecv_peers <= 1 || *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers));
+            sent = sent_local;
+          } else {
             if (pending_sends == max_pending_sends) {
               pending_sends -= send_proxy_channel->poll(pending_sends);
             }
@@ -195,11 +194,11 @@ MSCCLPP_DEVICE_INLINE void
                 ++pending_sends;
                 ++sent_local;
               } while (pending_sends < max_pending_sends && sent_local < reduced && 
-                       (nrecv_peers <= 1 || reduce_counts[sent_local] == nrecv_peers));
+                       (nrecv_peers <= 1 || *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers));
+              sent = sent_local;
             }
           }
         }
-        sent = sent_local;
       }
       __syncthreads();
       sent_local = sent;
@@ -247,7 +246,7 @@ extern "C" __global__ void __launch_bounds__(1024)
            mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channel_block, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel_block,
            int* recv_sm_channel_indics, int* send_sm_channel_indics, int* recv_proxy_channel_indics, int* send_proxy_channel_indics,
            int** recv_scratch_block, const uint64_t scratch_size, int* data,
-           int** reduce_locks_block, int** reduce_counts_block, int* nrecv_peers_block, bool* first_block,
+           int** reduce_counts_block, int* nrecv_peers_block, bool* first_block,
            const uint64_t* data_start_block, const uint64_t nelem_per_send, const uint64_t* nelem_total_block, const uint64_t debug_flag) {
   const int tid = threadIdx.x;
   const int bid = blockIdx.x;
@@ -261,7 +260,6 @@ extern "C" __global__ void __launch_bounds__(1024)
   const bool send_sm = (send_sm_channel != nullptr);
   const bool recv_proxy = (recv_proxy_channel != nullptr);
   const bool send_proxy = (send_proxy_channel != nullptr);
-  int* reduce_locks = reduce_locks_block[bid];
   int* reduce_counts = reduce_counts_block[bid];
   const int nrecv_peers = nrecv_peers_block[bid];
   const uint64_t data_start = data_start_block[bid];
@@ -269,7 +267,6 @@ extern "C" __global__ void __launch_bounds__(1024)
 
   if (is_first_block && (recv_sm || recv_proxy)) {
     const int nloops = (nelem_total + nelem_per_send - 1) / nelem_per_send;
-    zero_memory(reduce_locks, nloops);
     zero_memory(reduce_counts, nloops);
   }
   deviceSyncer.sync(gridDim.x);
@@ -278,6 +275,6 @@ extern "C" __global__ void __launch_bounds__(1024)
   threadblockCall(recv_sm_channel, send_sm_channel, recv_proxy_channel, send_proxy_channel,
                   recv_scratch, recv_sm, send_sm, recv_proxy, send_proxy,
                   scratch_size, data,
-                  reduce_locks, reduce_counts, nrecv_peers, is_first_block,
+                  reduce_counts, nrecv_peers, is_first_block,
                   data_start, nelem_per_send, nelem_total, debug_flag);
 }

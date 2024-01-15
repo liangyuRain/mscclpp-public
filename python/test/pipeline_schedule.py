@@ -286,7 +286,6 @@ class ReduceScatterPipelineKernel:
         recv_proxy_channel_indics = []
         send_proxy_channel_indics = []
         recv_scratches_arr = []
-        reduce_locks_arr = []
         reduce_counts_arr = []
         nrecv_peers_arr = []
         first_block_arr = []
@@ -333,9 +332,7 @@ class ReduceScatterPipelineKernel:
                 recv_scratches_arr += [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_sm_scratches.get(tree, [])] + \
                                       [struct.pack("P", scratch_buff.data.ptr) for scratch_buff in recv_proxy_scratches.get(tree, [])]
                 
-                reduce_locks = cp.empty(MAX_NLOOPS, dtype=cp.int32)
                 reduce_counts = cp.empty(MAX_NLOOPS, dtype=cp.int32)
-                reduce_locks_arr += [reduce_locks] * nrecv_peers
                 reduce_counts_arr += [reduce_counts] * nrecv_peers
                 nrecv_peers_arr += [nrecv_peers] * nrecv_peers
                 first_block_arr += [True] + [False] * (nrecv_peers - 1)
@@ -356,7 +353,6 @@ class ReduceScatterPipelineKernel:
                 assert tree not in recv_proxy_scratches
                 recv_scratches_arr += [struct.pack("P", 0)]
 
-                reduce_locks_arr += [null_buf]
                 reduce_counts_arr += [null_buf]
                 nrecv_peers_arr += [0]
                 first_block_arr += [True]
@@ -378,8 +374,6 @@ class ReduceScatterPipelineKernel:
         send_sm_channel_indics = cp.array(send_sm_channel_indics, dtype=cp.int32)
         recv_proxy_channel_indics = cp.array(recv_proxy_channel_indics, dtype=cp.int32)
         send_proxy_channel_indics = cp.array(send_proxy_channel_indics, dtype=cp.int32)
-        reduce_locks_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in reduce_locks_arr]
-        reduce_locks_arr_mem = cp.asarray(memoryview(b"".join(reduce_locks_ptr_arr)), dtype=cp.uint8)
         reduce_counts_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in reduce_counts_arr]
         reduce_counts_arr_mem = cp.asarray(memoryview(b"".join(reduce_counts_ptr_arr)), dtype=cp.uint8)
         nrecv_peers_arr = cp.array(nrecv_peers_arr, dtype=cp.int32)
@@ -392,7 +386,6 @@ class ReduceScatterPipelineKernel:
         assert send_sm_channel_indics.shape[0] == self.nblocks
         assert recv_proxy_channel_indics.shape[0] == self.nblocks
         assert send_proxy_channel_indics.shape[0] == self.nblocks
-        assert len(reduce_locks_arr) == self.nblocks
         assert len(reduce_counts_arr) == self.nblocks
         assert nrecv_peers_arr.shape[0] == self.nblocks
         assert first_block_arr.shape[0] == self.nblocks
@@ -405,7 +398,7 @@ class ReduceScatterPipelineKernel:
         self.params += struct.pack("P", recv_sm_channel_indics.data.ptr) + struct.pack("P", send_sm_channel_indics.data.ptr)
         self.params += struct.pack("P", recv_proxy_channel_indics.data.ptr) + struct.pack("P", send_proxy_channel_indics.data.ptr)
         self.params += struct.pack("P", recv_scratches_mem.data.ptr) + struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
-        self.params += struct.pack("P", reduce_locks_arr_mem.data.ptr) + struct.pack("P", reduce_counts_arr_mem.data.ptr)
+        self.params += struct.pack("P", reduce_counts_arr_mem.data.ptr)
         self.params += struct.pack("P", nrecv_peers_arr.data.ptr) + struct.pack("P", first_block_arr.data.ptr)
         
         # keep references to avoid garbage collection
@@ -416,10 +409,8 @@ class ReduceScatterPipelineKernel:
                       data, recv_sm_scratches, recv_proxy_scratches, recv_scratches_mem, recv_scratches_arr,
                       recv_sm_channel_indics, send_sm_channel_indics,
                       recv_proxy_channel_indics, send_proxy_channel_indics,
-                      reduce_locks_arr, reduce_counts_arr, nrecv_peers_arr,
-                      reduce_locks_ptr_arr, reduce_counts_ptr_arr,
-                      reduce_locks_arr_mem, reduce_counts_arr_mem,
-                      first_block_arr]
+                      reduce_counts_arr, reduce_counts_ptr_arr, reduce_counts_arr_mem,
+                      nrecv_peers_arr, first_block_arr]
         self._data_starts_nelem_totals = {}
         self._params = {}
 
