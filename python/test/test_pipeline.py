@@ -1090,3 +1090,57 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
         cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
         assert cp.array_equal(memory[shard_begin: shard_end], expected)
     proxy_service.stop_proxy()
+
+
+@pytest.mark.parametrize("nelem_per_send", [256, 512])
+@pytest.mark.parametrize("scratch_size", [512, 1024])
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_node_size: int):
+    mpi_group = MpiGroup(list(range(8)))
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_vary_size_reduce_scatter("
+              f"nelem_per_send={nelem_per_send}, "
+              f"scratch_size={scratch_size}, "
+              f"sm_node_size={sm_node_size})", flush=True)
+    group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
+
+    Ts = {}
+    Cs = {}
+    l_tree = [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7)]
+    r_tree = [(0, 7), (0, 6), (7, 5), (7, 4), (6, 3), (6, 2), (5, 1)]
+    for u in range(group.nranks):
+        Ts[u, 0] = [[((a + u) % 8, (b + u) % 8)] for a, b in l_tree]
+        Ts[u, 1] = [[((a + u) % 8, (b + u) % 8)] for a, b in r_tree]
+        Cs[u, 0], Cs[u, 1] = (1, 2) if u % 2 == 0 else (2, 1)
+
+    reduce_scatter_lengths = [3 * 2 ** n for n in range(10, 21)]
+    max_length = max(reduce_scatter_lengths)
+    init_data = cp.ones(max_length, dtype=cp.int32)
+    memory = cp.ones(max_length, dtype=cp.int32)
+
+    kernel = reduce_scatter_kernel(Ts, Cs,
+                                   k=3,
+                                   group=group,
+                                   connections=connections,
+                                   connection_types=connection_types,
+                                   data=memory,
+                                   scratch_size=scratch_size,
+                                   proxy_service=proxy_service)
+
+    funcs = [kernel.get_func(nelem_total=length, nelem_per_send=nelem_per_send)
+             for length in reduce_scatter_lengths]
+    shard_sizes = [length // group.nranks for length in reduce_scatter_lengths]
+    expected = [cp.array([group.nranks] * shard_size, dtype=cp.int32) for shard_size in shard_sizes]
+    shard_begins = [shard_size * group.my_rank for shard_size in shard_sizes]
+    shard_ends = [shard_begin + shard_size for shard_begin, shard_size in zip(shard_begins, shard_sizes)]
+
+    proxy_service.start_proxy()
+    for i in range(len(reduce_scatter_lengths)):
+        cp.copyto(memory, init_data)
+        funcs[i]()
+        cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
+        assert cp.array_equal(memory[shard_begins[i]: shard_ends[i]], expected[i])
+    proxy_service.stop_proxy()

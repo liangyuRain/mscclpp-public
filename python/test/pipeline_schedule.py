@@ -289,8 +289,6 @@ class ReduceScatterPipelineKernel:
         reduce_locks_arr = []
         reduce_counts_arr = []
         nrecv_peers_arr = []
-        sent_progress_arr = []
-        pending_sends_arr = []
         first_block_arr = []
         self.nblocks = 0
         null_buf = cp.empty(0, dtype=cp.int32)
@@ -340,16 +338,6 @@ class ReduceScatterPipelineKernel:
                 reduce_locks_arr += [reduce_locks] * nrecv_peers
                 reduce_counts_arr += [reduce_counts] * nrecv_peers
                 nrecv_peers_arr += [nrecv_peers] * nrecv_peers
-
-                if send_proxy:
-                    sent_progress = cp.empty(1, dtype=cp.int32)
-                    sent_progress_arr += [sent_progress] * nrecv_peers
-                    pending_sends = cp.empty(1, dtype=cp.int32)
-                    pending_sends_arr += [pending_sends] * nrecv_peers
-                else:
-                    sent_progress_arr += [null_buf] * nrecv_peers
-                    pending_sends_arr += [null_buf] * nrecv_peers
-
                 first_block_arr += [True] + [False] * (nrecv_peers - 1)
 
                 self.data_chunk_offsets += [data_chunk_offsets[tree]] * nrecv_peers
@@ -371,14 +359,6 @@ class ReduceScatterPipelineKernel:
                 reduce_locks_arr += [null_buf]
                 reduce_counts_arr += [null_buf]
                 nrecv_peers_arr += [0]
-
-                sent_progress_arr += [null_buf]
-                if send_proxy:
-                    pending_sends = cp.empty(1, dtype=cp.int32)
-                    pending_sends_arr += [pending_sends]
-                else:
-                    pending_sends_arr += [null_buf]
-
                 first_block_arr += [True]
 
                 self.data_chunk_offsets += [data_chunk_offsets[tree]]
@@ -403,10 +383,6 @@ class ReduceScatterPipelineKernel:
         reduce_counts_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in reduce_counts_arr]
         reduce_counts_arr_mem = cp.asarray(memoryview(b"".join(reduce_counts_ptr_arr)), dtype=cp.uint8)
         nrecv_peers_arr = cp.array(nrecv_peers_arr, dtype=cp.int32)
-        sent_progress_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in sent_progress_arr]
-        sent_progress_arr_mem = cp.asarray(memoryview(b"".join(sent_progress_ptr_arr)), dtype=cp.uint8)
-        pending_sends_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in pending_sends_arr]
-        pending_sends_arr_mem = cp.asarray(memoryview(b"".join(pending_sends_ptr_arr)), dtype=cp.uint8)
         first_block_arr = cp.array(first_block_arr, dtype=cp.bool_)
 
         assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
@@ -419,8 +395,6 @@ class ReduceScatterPipelineKernel:
         assert len(reduce_locks_arr) == self.nblocks
         assert len(reduce_counts_arr) == self.nblocks
         assert nrecv_peers_arr.shape[0] == self.nblocks
-        assert len(sent_progress_arr) == self.nblocks
-        assert len(pending_sends_arr) == self.nblocks
         assert first_block_arr.shape[0] == self.nblocks
         assert len(self.data_chunk_offsets) == self.nblocks
         assert len(self.data_chunk_sizes) == self.nblocks
@@ -432,9 +406,7 @@ class ReduceScatterPipelineKernel:
         self.params += struct.pack("P", recv_proxy_channel_indics.data.ptr) + struct.pack("P", send_proxy_channel_indics.data.ptr)
         self.params += struct.pack("P", recv_scratches_mem.data.ptr) + struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
         self.params += struct.pack("P", reduce_locks_arr_mem.data.ptr) + struct.pack("P", reduce_counts_arr_mem.data.ptr)
-        self.params += struct.pack("P", nrecv_peers_arr.data.ptr)
-        self.params += struct.pack("P", sent_progress_arr_mem.data.ptr) + struct.pack("P", pending_sends_arr_mem.data.ptr)
-        self.params += struct.pack("P", first_block_arr.data.ptr)
+        self.params += struct.pack("P", nrecv_peers_arr.data.ptr) + struct.pack("P", first_block_arr.data.ptr)
         
         # keep references to avoid garbage collection
         self._temp = [recv_sm_channels, send_sm_channels,
@@ -444,9 +416,9 @@ class ReduceScatterPipelineKernel:
                       data, recv_sm_scratches, recv_proxy_scratches, recv_scratches_mem, recv_scratches_arr,
                       recv_sm_channel_indics, send_sm_channel_indics,
                       recv_proxy_channel_indics, send_proxy_channel_indics,
-                      reduce_locks_arr, reduce_counts_arr, nrecv_peers_arr, sent_progress_arr, pending_sends_arr,
-                      reduce_locks_ptr_arr, reduce_counts_ptr_arr, sent_progress_ptr_arr, pending_sends_ptr_arr,
-                      reduce_locks_arr_mem, reduce_counts_arr_mem, sent_progress_arr_mem, pending_sends_arr_mem,
+                      reduce_locks_arr, reduce_counts_arr, nrecv_peers_arr,
+                      reduce_locks_ptr_arr, reduce_counts_ptr_arr,
+                      reduce_locks_arr_mem, reduce_counts_arr_mem,
                       first_block_arr]
         self._data_starts_nelem_totals = {}
         self._params = {}
