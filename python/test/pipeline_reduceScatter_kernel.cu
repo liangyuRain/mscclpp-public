@@ -42,6 +42,8 @@ MSCCLPP_DEVICE_INLINE void
     assert(!recv_sm || !recv_proxy);
   }
 
+  int poll_loop_cnt = 0;
+
   int received = (recv_sm || recv_proxy ? 0 : nloops);
   int reduced = (recv_sm || recv_proxy ? 0 : nloops);
 
@@ -169,6 +171,21 @@ MSCCLPP_DEVICE_INLINE void
       __syncthreads();
     }
 
+    if (send_proxy) {
+      if (tid == 0) {
+        if (pending_sends == 0) {
+          poll_loop_cnt = 0;
+        } else {
+          ++poll_loop_cnt;
+          if (poll_loop_cnt == 10) {
+            pending_sends -= send_proxy_channel->poll(pending_sends);
+            poll_loop_cnt = 0;
+          }
+        }
+      }
+      __syncthreads();
+    }
+
     if (sent_local < reduced) {
       // assert is_first_block
       // assert send_sm or send_proxy
@@ -183,6 +200,7 @@ MSCCLPP_DEVICE_INLINE void
           } else {
             if (pending_sends == max_pending_sends) {
               pending_sends -= send_proxy_channel->poll(pending_sends);
+              poll_loop_cnt = 0;
             }
             if (pending_sends < max_pending_sends) {
               do {
