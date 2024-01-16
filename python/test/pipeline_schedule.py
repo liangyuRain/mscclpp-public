@@ -18,7 +18,8 @@ KERNEL_FILE = "pipeline_kernel_read.cu"
 # KERNEL_FILE = "pipeline_kernel_no_divergence.cu"
 # KERNEL_FILE = "pipeline_kernel_simplified_read.cu"
 
-REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel.cu"
+# REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel.cu"
+REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel_coll_send.cu"
 
 MAX_NLOOPS = 1048576  # also defined in pipeline_reduceScatter_kernel.cu
 
@@ -292,6 +293,8 @@ class ReduceScatterPipelineKernel:
         recv_scratches_arr = []
         reduce_counts_arr = []
         nrecv_peers_arr = []
+        send_status_offset = 0
+        send_status_indics = []
         first_block_arr = []
         self.nblocks = 0
         null_buf = cp.empty(0, dtype=cp.int32)
@@ -339,6 +342,13 @@ class ReduceScatterPipelineKernel:
                 reduce_counts = cp.empty(MAX_NLOOPS, dtype=cp.int32)
                 reduce_counts_arr += [reduce_counts] * nrecv_peers
                 nrecv_peers_arr += [nrecv_peers] * nrecv_peers
+
+                if send_proxy:
+                    send_status_indics += [send_status_offset] * nrecv_peers
+                    send_status_offset += 1
+                else:
+                    send_status_indics += [None] * nrecv_peers
+
                 first_block_arr += [True] + [False] * (nrecv_peers - 1)
 
                 self.data_chunk_offsets += [data_chunk_offsets[tree]] * nrecv_peers
@@ -359,6 +369,13 @@ class ReduceScatterPipelineKernel:
 
                 reduce_counts_arr += [null_buf]
                 nrecv_peers_arr += [0]
+
+                if send_proxy:
+                    send_status_indics += [send_status_offset]
+                    send_status_offset += 1
+                else:
+                    send_status_indics += [None]
+
                 first_block_arr += [True]
 
                 self.data_chunk_offsets += [data_chunk_offsets[tree]]
@@ -381,6 +398,15 @@ class ReduceScatterPipelineKernel:
         reduce_counts_ptr_arr = [struct.pack("P", arr.data.ptr) for arr in reduce_counts_arr]
         reduce_counts_arr_mem = cp.asarray(memoryview(b"".join(reduce_counts_ptr_arr)), dtype=cp.uint8)
         nrecv_peers_arr = cp.array(nrecv_peers_arr, dtype=cp.int32)
+
+        if "coll_send" in self.kernel_file:
+            send_status_mem_size = send_status_offset
+            send_status_arr = cp.empty(send_status_mem_size, dtype=cp.uint64)
+            send_status_ptr_arr = [struct.pack("P", send_status_arr.data.ptr + i * 8) if i is not None else struct.pack("P", 0) for i in send_status_indics]
+            send_status_arr_mem = cp.asarray(memoryview(b"".join(send_status_ptr_arr)), dtype=cp.uint8)
+        else:
+            send_status_arr, send_status_ptr_arr, send_status_arr_mem = None, None, None
+
         first_block_arr = cp.array(first_block_arr, dtype=cp.bool_)
 
         assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
@@ -392,6 +418,7 @@ class ReduceScatterPipelineKernel:
         assert send_proxy_channel_indics.shape[0] == self.nblocks
         assert len(reduce_counts_arr) == self.nblocks
         assert nrecv_peers_arr.shape[0] == self.nblocks
+        assert send_status_ptr_arr is None or len(send_status_ptr_arr) == self.nblocks
         assert first_block_arr.shape[0] == self.nblocks
         assert len(self.data_chunk_offsets) == self.nblocks
         assert len(self.data_chunk_sizes) == self.nblocks
@@ -402,8 +429,10 @@ class ReduceScatterPipelineKernel:
         self.params += struct.pack("P", recv_sm_channel_indics.data.ptr) + struct.pack("P", send_sm_channel_indics.data.ptr)
         self.params += struct.pack("P", recv_proxy_channel_indics.data.ptr) + struct.pack("P", send_proxy_channel_indics.data.ptr)
         self.params += struct.pack("P", recv_scratches_mem.data.ptr) + struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
-        self.params += struct.pack("P", reduce_counts_arr_mem.data.ptr)
-        self.params += struct.pack("P", nrecv_peers_arr.data.ptr) + struct.pack("P", first_block_arr.data.ptr)
+        self.params += struct.pack("P", reduce_counts_arr_mem.data.ptr) + struct.pack("P", nrecv_peers_arr.data.ptr)
+        if "coll_send" in self.kernel_file:
+            self.params += struct.pack("P", send_status_arr_mem.data.ptr)
+        self.params += struct.pack("P", first_block_arr.data.ptr)
         
         # keep references to avoid garbage collection
         self._temp = [recv_sm_channels, send_sm_channels,
@@ -413,8 +442,10 @@ class ReduceScatterPipelineKernel:
                       data, recv_sm_scratches, recv_proxy_scratches, recv_scratches_mem, recv_scratches_arr,
                       recv_sm_channel_indics, send_sm_channel_indics,
                       recv_proxy_channel_indics, send_proxy_channel_indics,
-                      reduce_counts_arr, reduce_counts_ptr_arr, reduce_counts_arr_mem,
-                      nrecv_peers_arr, first_block_arr]
+                      reduce_counts_arr, nrecv_peers_arr, send_status_arr,
+                      reduce_counts_ptr_arr, send_status_ptr_arr,
+                      reduce_counts_arr_mem, send_status_arr_mem,
+                      first_block_arr]
         self._data_starts_nelem_totals = {}
         self._params = {}
 

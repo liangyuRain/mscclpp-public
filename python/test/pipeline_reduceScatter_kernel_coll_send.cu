@@ -15,6 +15,10 @@
 #define FLUSH_INTERVAL 50
 #define MAX_NLOOPS 1048576
 
+// locked: *send_status == (SEND_LOCK_MASK | ((uint64_t) sent_local)
+// unlocked: *send_status == ((uint64_t) pending_sends << 32) | ((uint64_t) sent_local)
+#define SEND_LOCK_MASK 0xffffffff00000000
+
 // END_DEFINES //
 
 
@@ -23,7 +27,7 @@ MSCCLPP_DEVICE_INLINE void
                     mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channel, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel,
                     int* recv_scratch, const bool recv_sm, const bool send_sm, const bool recv_proxy, const bool send_proxy,
                     const uint64_t scratch_size, int* data,
-                    int* reduce_counts, const int nrecv_peers, int* sent_progress, int* pending_sends, const bool is_first_block,
+                    int* reduce_counts, const int nrecv_peers, uint64_t* const send_status, const bool is_first_block,
                     const uint64_t data_start, const uint64_t nelem_per_send, const uint64_t nelem_total, const uint64_t debug_flag) {
   const int tid = threadIdx.x;
 
@@ -59,7 +63,7 @@ MSCCLPP_DEVICE_INLINE void
     sent = sent_local;
   }
 
-  int psends = 0; // local copy of pending_sends
+  int pending_sends = 0; // local copy of pending_sends
   __syncthreads();
 
   while (reduced < nloops || sent_local < nloops) {
@@ -178,39 +182,42 @@ MSCCLPP_DEVICE_INLINE void
       if (tid == 0) {
         if (sent_local < reduced) {
           if (nrecv_peers <= 1) {
-            if (psends == max_pending_sends) {
-              psends -= send_proxy_channel->poll(psends);
+            if (pending_sends == max_pending_sends) {
+              pending_sends -= send_proxy_channel->poll(pending_sends);
             }
-            while (psends < max_pending_sends && sent_local < reduced) {
+            while (pending_sends < max_pending_sends && sent_local < reduced) {
               const uint64_t s_start = (sent_local % max_pending_sends) * nelem_per_send;
               const uint64_t d_start = data_start + sent_local * nelem_per_send;
               const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
               if (sent_local > 0 && sent_local % FLUSH_INTERVAL == 0) send_proxy_channel->flush();
               send_proxy_channel->putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
-              ++psends;
+              ++pending_sends;
               ++sent_local;
             }
           } else {
-            sent_local = *((volatile int*) sent_progress);
-            if (sent_local < reduced && *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers) {
-              psends = atomicExch(pending_sends, -1);
-              if (psends >= 0) { // lock success
-                if (psends == max_pending_sends) {
-                  psends -= send_proxy_channel->poll(psends);
+            uint64_t send_status_local = *((volatile uint64_t*) send_status);
+            sent_local = (int) (send_status_local & 0xffffffff);
+            if ((send_status_local & SEND_LOCK_MASK) != SEND_LOCK_MASK &&
+                sent_local < reduced && *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers) {
+              send_status_local = atomicOr((unsigned long long int*) send_status, SEND_LOCK_MASK);
+              if ((send_status_local & SEND_LOCK_MASK) != SEND_LOCK_MASK) { // lock success
+                sent_local = (int) (send_status_local & 0xffffffff);
+                pending_sends = (int) (send_status_local >> 32);
+                if (pending_sends == max_pending_sends) {
+                  pending_sends -= send_proxy_channel->poll(pending_sends);
                 }
-                sent_local = *((volatile int*) sent_progress);
-                while (psends < max_pending_sends && sent_local < reduced && *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers) {
+                while (pending_sends < max_pending_sends && sent_local < reduced && *((volatile int*) &reduce_counts[sent_local]) == nrecv_peers) {
                   const uint64_t s_start = (sent_local % max_pending_sends) * nelem_per_send;
                   const uint64_t d_start = data_start + sent_local * nelem_per_send;
                   const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
                   if (sent_local > 0 && sent_local % FLUSH_INTERVAL == 0) send_proxy_channel->flush();
                   send_proxy_channel->putWithSignal(s_start * sizeof(int), d_start * sizeof(int), size * sizeof(int));
-                  ++psends;
                   ++sent_local;
+                  ++pending_sends;
                 }
-                *((volatile int*) sent_progress) = sent_local;
+                send_status_local = ((uint64_t) pending_sends << 32) | ((uint64_t) sent_local);
                 __threadfence();
-                *((volatile int*) pending_sends) = psends; // release lock
+                *((volatile uint64_t*) send_status) = send_status_local; // release lock
               }
             }
           }
@@ -227,11 +234,11 @@ MSCCLPP_DEVICE_INLINE void
     if (send_sm && is_first_block) send_sm_channel->wait();
     if (recv_proxy) recv_proxy_channel->flush();
     if (send_proxy) {
-      // assert *sent_progress == nloops
       // all threadblocks have finished send
-      psends = atomicExch(pending_sends, -1);
-      if (psends >= 0) {
-        while (psends > 0) psends -= send_proxy_channel->poll(psends);
+      const uint64_t send_status_local = atomicOr((unsigned long long int*) send_status, SEND_LOCK_MASK);
+      if ((send_status_local & SEND_LOCK_MASK) != SEND_LOCK_MASK) {
+        pending_sends = (int) (send_status_local >> 32);
+        while (pending_sends > 0) pending_sends -= send_proxy_channel->poll(pending_sends);
         send_proxy_channel->flush();
       }
     }
@@ -268,7 +275,7 @@ extern "C" __global__ void __launch_bounds__(1024)
            mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channel_block, mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel_block,
            int* recv_sm_channel_indics, int* send_sm_channel_indics, int* recv_proxy_channel_indics, int* send_proxy_channel_indics,
            int** recv_scratch_block, const uint64_t scratch_size, int* data,
-           int** reduce_counts_block, int* nrecv_peers_block, int** sent_progress_block, int** pending_sends_block, bool* first_block,
+           int** reduce_counts_block, int* nrecv_peers_block, uint64_t** send_status_block, bool* first_block,
            const uint64_t* data_start_block, const uint64_t nelem_per_send, const uint64_t* nelem_total_block, const uint64_t debug_flag) {
   const int tid = threadIdx.x;
   const int bid = blockIdx.x;
@@ -284,22 +291,16 @@ extern "C" __global__ void __launch_bounds__(1024)
   const bool send_proxy = (send_proxy_channel != nullptr);
   int* reduce_counts = reduce_counts_block[bid];
   const int nrecv_peers = nrecv_peers_block[bid];
-  int* sent_progress = sent_progress_block[bid];
-  int* pending_sends = pending_sends_block[bid];
+  uint64_t* send_status = send_status_block[bid];
   const uint64_t data_start = data_start_block[bid];
   const uint64_t nelem_total = nelem_total_block[bid];
 
   if (is_first_block) {
     if (recv_sm || recv_proxy) {
-      if (tid == 0 && send_proxy) {
-        *sent_progress = 0;
-        *pending_sends = 0;
-      }
       const int nloops = (nelem_total + nelem_per_send - 1) / nelem_per_send;
       zero_memory(reduce_counts, nloops);
-    } else {
-      if (tid == 0 && send_proxy) *pending_sends = 0;
     }
+    if (tid == 0 && send_proxy) *send_status = 0;
   }
   deviceSyncer.sync(gridDim.x);
 
@@ -307,6 +308,6 @@ extern "C" __global__ void __launch_bounds__(1024)
   threadblockCall(recv_sm_channel, send_sm_channel, recv_proxy_channel, send_proxy_channel,
                   recv_scratch, recv_sm, send_sm, recv_proxy, send_proxy,
                   scratch_size, data,
-                  reduce_counts, nrecv_peers, sent_progress, pending_sends, is_first_block,
+                  reduce_counts, nrecv_peers, send_status, is_first_block,
                   data_start, nelem_per_send, nelem_total, debug_flag);
 }
