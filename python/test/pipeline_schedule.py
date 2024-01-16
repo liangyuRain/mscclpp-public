@@ -282,7 +282,7 @@ class AllgatherParallelSMPipelineKernel:
         file_dir = os.path.dirname(os.path.abspath(__file__))
         self.kernel_file = ALLGATHER_PARALLEL_SM_KERNEL_FILE
         assert "parallel_sm" in self.kernel_file
-        self.kernel_name = "pipeline_schedule"
+        self.kernel_name = "pipeline_allgather_schedule"
         self._kernel = KernelBuilder(
             file=self.kernel_file,
             kernel_name=self.kernel_name,

@@ -8,8 +8,7 @@
 // BEGIN_DEFINES //
 
 #ifndef PARAMETRIZE
-#define KERNEL pipeline_schedule
-#define N_PEERS 8
+#define KERNEL pipeline_allgather_schedule
 #endif
 
 #define FLUSH_INTERVAL 50

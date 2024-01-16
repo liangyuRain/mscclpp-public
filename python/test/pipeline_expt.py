@@ -138,7 +138,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
                          connections: dict, connection_types: dict,
                          data_lengths: list, send_lengths: list, scratch_size: int,
                          check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
-                         use_reduceScatter_kernel=False, rs_n_parallel_sm_blocks: int = 2):
+                         use_reduceScatter_kernel=False, rs_n_parallel_sm_blocks: int = 2,
+                         ag_n_parallel_sm_blocks: int = 1):
     proxy_service = ProxyService()
 
     lcm = reduce_scatter_k * allgather_k // math.gcd(reduce_scatter_k, allgather_k)
@@ -159,7 +160,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
                                  connections=connections,
                                  connection_types=connection_types,
                                  data=data,
-                                 proxy_service=proxy_service)
+                                 proxy_service=proxy_service,
+                                 n_parallel_sm_blocks=ag_n_parallel_sm_blocks)
 
     if group.my_rank == 0:
         print("#" * 55 + " Allreduce " + "#" * 55)
@@ -168,6 +170,7 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
         print(f"rs_n_parallel_sm_blocks={rs_n_parallel_sm_blocks}")
+        print(f"ag_n_parallel_sm_blocks={ag_n_parallel_sm_blocks}")
         print(f"RS_KERNEL={RS_kernel.kernel_file}::{RS_kernel.kernel_name}")
         print(f"AG_KERNEL={AG_kernel.kernel_file}::{AG_kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
@@ -205,7 +208,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
 def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                   connections: dict, connection_types: dict,
                   data_lengths: list, send_lengths: list, check_iters: int = 10,
-                  warmup_iters: int = 10, iters: int = 10):
+                  warmup_iters: int = 10, iters: int = 10,
+                  n_parallel_sm_blocks: int = 2):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -216,13 +220,15 @@ def run_allgather(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                               connections=connections,
                               connection_types=connection_types,
                               data=data,
-                              proxy_service=proxy_service)
+                              proxy_service=proxy_service,
+                              n_parallel_sm_blocks=n_parallel_sm_blocks)
 
     if group.my_rank == 0:
         print("#" * 55 + " Allgather " + "#" * 55)
         print(f"nranks={group.nranks}")
         print(f"k={k}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"n_parallel_sm_blocks={n_parallel_sm_blocks}")
         print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
         print()
@@ -340,7 +346,8 @@ if __name__ == "__main__":
                   send_lengths=[2 ** 18],
                   check_iters=check_iters,
                   warmup_iters=warmup_iters,
-                  iters=bench_iters)
+                  iters=bench_iters,
+                  n_parallel_sm_blocks=1)
 
     if group.my_rank == 0:
         print()
@@ -400,6 +407,7 @@ if __name__ == "__main__":
                          check_iters=check_iters,
                          warmup_iters=warmup_iters,
                          use_reduceScatter_kernel=False,
-                         rs_n_parallel_sm_blocks=8)
+                         rs_n_parallel_sm_blocks=8,
+                         ag_n_parallel_sm_blocks=1)
 
     del group

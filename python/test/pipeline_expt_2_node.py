@@ -137,16 +137,25 @@ if __name__ == "__main__":
 
     # Allgather
     for ninstance in [1, 2, 3, 4, 6, 8]:
-        Tsp, Csp, kp = multi_instance(AG_Ts, AG_Cs, AG_k, ninstance)
-        run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
-                      connection_types={dest: channel_type(dest) for dest in connections},
-                      data_lengths=data_lengths,
-                      send_lengths=send_lengths,
-                      check_iters=check_iters,
-                      warmup_iters=warmup_iters,
-                      iters=bench_iters)
-        if group.my_rank == 0:
-            print()
+        for n_parallel_sm_blocks in [1, 2, 3, 4, 6, 8]:
+            Tsp, Csp, kp = multi_instance(AG_Ts, AG_Cs, AG_k, ninstance)
+            try:
+                run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
+                              connection_types={dest: channel_type(dest) for dest in connections},
+                              data_lengths=data_lengths,
+                              send_lengths=send_lengths,
+                              check_iters=check_iters,
+                              warmup_iters=warmup_iters,
+                              iters=bench_iters,
+                              n_parallel_sm_blocks=n_parallel_sm_blocks)
+            except ThreadBlockLimitException as e:
+                # Exception may not be triggered at all ranks.
+                # Different ranks may requre different num of threadblocks depending on parameters.
+                print(f"ThreadBlockLimitException: "
+                      f"nblocks={e.nblocks}, ninstance={ninstance}, "
+                      f"n_parallel_sm_blocks={n_parallel_sm_blocks}")
+            if group.my_rank == 0:
+                print()
     
     RS_k = 1
     RS_tree_name = f"symmetric/sym_split_IB20_NV300_bw_k_{RS_k}_320"
