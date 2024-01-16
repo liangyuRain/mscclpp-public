@@ -18,8 +18,9 @@ KERNEL_FILE = "pipeline_kernel_read.cu"
 # KERNEL_FILE = "pipeline_kernel_no_divergence.cu"
 # KERNEL_FILE = "pipeline_kernel_simplified_read.cu"
 
-# REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel.cu"
-REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel_coll_send.cu"
+REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel.cu"
+# REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel_sm_opt.cu"
+# REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel_coll_send.cu"
 
 MAX_NLOOPS = 1048576  # also defined in pipeline_reduceScatter_kernel.cu
 
