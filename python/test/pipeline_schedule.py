@@ -26,6 +26,15 @@ REDUCE_SCATTER_PARALLEL_SM_KERNEL_FILE = "pipeline_reduceScatter_kernel_parallel
 
 MAX_NLOOPS = 1048576  # also defined in pipeline_reduceScatter_kernel.cu
 
+
+# Exception may not be triggered at all ranks.
+# Different ranks may requre different num of threadblocks depending on parameters.
+class ThreadBlockLimitException(Exception):
+    def __init__(self, message, nblocks):
+        super().__init__(message)
+        self.nblocks = nblocks
+
+
 def connect_nvlink(group: mscclpp_comm.CommGroup, remote_nghrs: list):
     for n in remote_nghrs:
         assert type(n) is int
@@ -55,7 +64,8 @@ class PipelineKernel:
         nblocks,
         nthreads=1024,
     ):
-        assert nblocks <= 128
+        if nblocks > 128:
+            raise ThreadBlockLimitException(f"nblocks={nblocks} > 128", nblocks)
         if nblocks > 100:
             print(f"Warning: nblocks={nblocks} > 100", flush=True)
         n_peers = max([len(recv_sm_channels.get(bid, [])) + len(recv_proxy_channels.get(bid, [])) for bid in range(nblocks)] +
@@ -384,7 +394,8 @@ class ReduceScatterPipelineKernel:
                 self.data_chunk_offsets += [data_chunk_offsets[tree]]
                 self.data_chunk_sizes += [data_chunk_sizes[tree]]
 
-        assert self.nblocks <= 128, f"nblocks={self.nblocks} > 128"
+        if self.nblocks > 128:
+            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > 128", self.nblocks)
         if self.nblocks > 100:
             print(f"Warning: nblocks={self.nblocks} > 100", flush=True)
 
@@ -656,7 +667,8 @@ class ReduceScatterParallelSMPipelineKernel:
                 self.data_chunk_offsets += [data_chunk_offsets[tree]]
                 self.data_chunk_sizes += [data_chunk_sizes[tree]]
 
-        assert self.nblocks <= 128, f"nblocks={self.nblocks} > 128"
+        if self.nblocks > 128:
+            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > 128", self.nblocks)
         if self.nblocks > 100:
             print(f"Warning: nblocks={self.nblocks} > 100", flush=True)
 

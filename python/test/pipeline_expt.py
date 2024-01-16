@@ -7,7 +7,6 @@ from mpi4py import MPI
 
 import mscclpp.comm as mscclpp_comm
 from pipeline_schedule import (
-    PipelineKernel,
     allreduce_kernel,
     allgather_kernel,
     reduce_scatter_kernel,
@@ -138,7 +137,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
                          group: mscclpp_comm.CommGroup,
                          connections: dict, connection_types: dict,
                          data_lengths: list, send_lengths: list, scratch_size: int,
-                         check_iters: int = 10, warmup_iters: int = 10, iters: int = 10):
+                         check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
+                         use_reduceScatter_kernel=False, rs_n_parallel_sm_blocks: int = 2):
     proxy_service = ProxyService()
 
     lcm = reduce_scatter_k * allgather_k // math.gcd(reduce_scatter_k, allgather_k)
@@ -152,7 +152,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
                                       data=data,
                                       scratch_size=scratch_size,
                                       proxy_service=proxy_service,
-                                      use_reduceScatter_kernel=True)
+                                      use_reduceScatter_kernel=use_reduceScatter_kernel,
+                                      n_parallel_sm_blocks=rs_n_parallel_sm_blocks)
     AG_kernel = allgather_kernel(allgather_Ts, allgather_Cs, allgather_k,
                                  group=group,
                                  connections=connections,
@@ -165,6 +166,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
         print(f"nranks={group.nranks}")
         print(f"RS_k={reduce_scatter_k}, AG_k={allgather_k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
+        print(f"rs_n_parallel_sm_blocks={rs_n_parallel_sm_blocks}")
         print(f"RS_KERNEL={RS_kernel.kernel_file}::{RS_kernel.kernel_name}")
         print(f"AG_KERNEL={AG_kernel.kernel_file}::{AG_kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
@@ -252,7 +255,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        connections: dict, connection_types: dict,
                        data_lengths: list, send_lengths: list, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
-                       use_reduceScatter_kernel=True):
+                       use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 2):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -265,13 +268,16 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                    data=data,
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
-                                   use_reduceScatter_kernel=use_reduceScatter_kernel)
+                                   use_reduceScatter_kernel=use_reduceScatter_kernel,
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
     
     if group.my_rank == 0:
         print("#" * 53 + " ReduceScatter " + "#" * 53)
         print(f"nranks={group.nranks}")
         print(f"k={k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
+        print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
+        print(f"n_parallel_sm_blocks={n_parallel_sm_blocks}")
         print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
         print()
@@ -340,7 +346,7 @@ if __name__ == "__main__":
         print()
 
     # ring
-    RS_k = 8
+    RS_k = 1
     RS_Ts = {(u, i): [[((u + d) % group.nranks, (u + d + 1) % group.nranks)]
                       for d in range(group.nranks - 1)]
              for u, i in itertools.product(range(group.nranks), range(RS_k))}
@@ -356,7 +362,8 @@ if __name__ == "__main__":
                        check_iters=check_iters,
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
-                       use_reduceScatter_kernel=True)
+                       use_reduceScatter_kernel=False,
+                       n_parallel_sm_blocks=8)
 
     if group.my_rank == 0:
         print()
@@ -392,6 +399,7 @@ if __name__ == "__main__":
                          scratch_size=2 ** 20,
                          check_iters=check_iters,
                          warmup_iters=warmup_iters,
-                         iters=bench_iters)
+                         use_reduceScatter_kernel=False,
+                         rs_n_parallel_sm_blocks=8)
 
     del group
