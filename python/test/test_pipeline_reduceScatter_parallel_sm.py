@@ -6,7 +6,11 @@ from mscclpp import ProxyService
 from .mscclpp_mpi import MpiGroup, parametrize_mpi_groups, mpi_group
 from .test_mscclpp import create_and_connect
 
-from .pipeline_schedule import ReduceScatterParallelSMPipelineKernel, reduce_scatter_kernel
+from .pipeline_schedule import (
+    ReduceScatterParallelSMPipelineKernel,
+    reduce_scatter_kernel,
+    ThreadBlockLimitException,
+)
 
 
 @parametrize_mpi_groups(2, 8)
@@ -210,7 +214,7 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("reduce_scatter_length", [128, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
-@pytest.mark.parametrize("ninstance", [1, 2])
+@pytest.mark.parametrize("ninstance", [1, 2, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
 def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_scatter_length: int,
@@ -236,16 +240,27 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
 
     memory = cp.array([group.my_rank + 1] * reduce_scatter_length, dtype=cp.int32)
 
-    kernel = reduce_scatter_kernel(Ts, Cs,
-                                   k=ninstance,
-                                   group=group,
-                                   connections=connections,
-                                   connection_types=connection_types,
-                                   data=memory,
-                                   scratch_size=scratch_size,
-                                   proxy_service=proxy_service,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
-    
+    try:
+        kernel = reduce_scatter_kernel(Ts, Cs,
+                                    k=ninstance,
+                                    group=group,
+                                    connections=connections,
+                                    connection_types=connection_types,
+                                    data=memory,
+                                    scratch_size=scratch_size,
+                                    proxy_service=proxy_service,
+                                    n_parallel_sm_blocks=n_parallel_sm_blocks)
+        exception_triggered = False
+    except ThreadBlockLimitException as e:
+        assert (group.nranks, ninstance, sm_node_size, n_parallel_sm_blocks) == (8, 4, 8, 4)
+        exception_triggered = True
+
+    if (group.nranks, ninstance, sm_node_size, n_parallel_sm_blocks) == (8, 4, 8, 4):
+        assert exception_triggered
+        return
+    else:
+        assert not exception_triggered
+
     shard_size = reduce_scatter_length // group.nranks
     shard_begin = shard_size * group.my_rank
     shard_end = shard_begin + shard_size
