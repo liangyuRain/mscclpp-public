@@ -887,6 +887,56 @@ def test_multrun_allgather(nelem_per_send: int, allgather_length: int, iters: in
     proxy_service.stop_proxy()
 
 
+@pytest.mark.parametrize("nelem_per_send", [256, 512])
+@pytest.mark.parametrize("sm_node_size", [1, 4, 8])
+def test_vary_size_allgather(nelem_per_send: int, sm_node_size: int):
+    mpi_group = MpiGroup(list(range(8)))
+    if mpi_group.comm.rank == 0:
+        print(f"TEST: test_vary_size_allreduce("
+              f"nelem_per_send={nelem_per_send}, "
+              f"sm_node_size={sm_node_size})", flush=True)
+    group, connections = create_and_connect(mpi_group, "NVLink")
+    connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
+                        for dest in connections.keys()}
+    proxy_service = ProxyService()
+
+    Ts = {}
+    Cs = {}
+    l_tree = [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7)]
+    r_tree = [(0, 7), (0, 6), (7, 5), (7, 4), (6, 3), (6, 2), (5, 1)]
+    for u in range(group.nranks):
+        Ts[u, 0] = [[((a + u) % 8, (b + u) % 8)] for a, b in l_tree]
+        Ts[u, 1] = [[((a + u) % 8, (b + u) % 8)] for a, b in r_tree]
+        Cs[u, 0], Cs[u, 1] = (1, 2) if u % 2 == 0 else (2, 1)
+
+    allgather_lengths = [3 * 2 ** n for n in range(10, 21)]
+    max_length = max(allgather_lengths)
+    init_data = cp.array([group.my_rank + 1] * max_length, dtype=cp.int32)
+    memory = cp.ones(max_length, dtype=cp.int32)
+
+    kernel = allgather_kernel(Ts, Cs,
+                              k=3,
+                              group=group,
+                              connections=connections,
+                              connection_types=connection_types,
+                              data=memory,
+                              proxy_service=proxy_service)
+
+    funcs = [kernel.get_func(nelem_total=length, nelem_per_send=nelem_per_send)
+             for length in allgather_lengths]
+    expected = [cp.array([off // (length // group.nranks) + 1 for off in range(length)] +
+                         [group.my_rank + 1] * (max_length - length), dtype=cp.int32)
+                for length in allgather_lengths]
+
+    proxy_service.start_proxy()
+    for i in range(len(allgather_lengths)):
+        cp.copyto(memory, init_data)
+        funcs[i]()
+        cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
+        assert cp.array_equal(memory, expected[i])
+    proxy_service.stop_proxy()
+
+
 @parametrize_mpi_groups(2, 8)
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("reduce_scatter_length", [128, 2 ** 20])

@@ -22,6 +22,8 @@ REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel.cu"
 # REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel_sm_opt.cu"
 # REDUCE_SCATTER_KERNEL_FILE = "pipeline_reduceScatter_kernel_coll_send.cu"
 
+ALLGATHER_PARALLEL_SM_KERNEL_FILE = "pipeline_allgather_kernel_parallel_sm.cu"
+
 REDUCE_SCATTER_PARALLEL_SM_KERNEL_FILE = "pipeline_reduceScatter_kernel_parallel_sm.cu"
 
 MAX_NLOOPS = 1048576  # also defined in pipeline_reduceScatter_kernel.cu
@@ -220,6 +222,222 @@ class PipelineKernel:
 
     def prepare_params(self, nelem_total, nelem_per_send):
         assert not self.use_schatch or nelem_per_send <= self.scratch_size
+        assert nelem_total <= self.data.shape[0]
+        assert nelem_per_send % 4 == 0  # aligned by int4
+
+        if nelem_total in self._data_starts_nelem_totals:
+            data_starts, nelem_totals = self._data_starts_nelem_totals[nelem_total]
+        else:
+            assert nelem_total % self.total_chunks == 0
+            nelem_per_chunk = nelem_total // self.total_chunks
+
+            assert all(self.data_chunk_offsets[bid] * nelem_per_chunk % 4 == 0 for bid in range(self.nblocks))  # aligned by int4
+            data_starts = cp.array([self.data_chunk_offsets[bid] * nelem_per_chunk for bid in range(self.nblocks)], dtype=cp.uint64)
+            nelem_totals = cp.array([self.data_chunk_sizes[bid] * nelem_per_chunk for bid in range(self.nblocks)], dtype=cp.uint64)
+            self._data_starts_nelem_totals[nelem_total] = (data_starts, nelem_totals)
+
+        params = self.params + struct.pack("P", data_starts.data.ptr) + struct.pack("Q", nelem_per_send) + struct.pack("P", nelem_totals.data.ptr)
+        self._params[uuid.uuid1()] = params
+
+        return params
+
+
+    def get_func(self, nelem_total=None, nelem_per_send=None):
+        if nelem_per_send is None:
+            nelem_per_send = self.scratch_size
+        if nelem_total is None:
+            nelem_total = self.data.shape[0]
+        params = self.prepare_params(nelem_total, nelem_per_send)
+        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+
+
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None):
+        return self.get_func(nelem_total, nelem_per_send)(stream_ptr)
+
+
+class AllgatherParallelSMPipelineKernel:
+    def __init__(
+        self,
+        recv_sm_channels: dict,  # recv_sm_channels[tree] = sm recv peers of tree
+        send_sm_channels: dict,  # send_sm_channels[tree] = sm send peers of tree
+        recv_proxy_channels: dict,  # recv_proxy_channels[tree] = proxy recv peers of tree
+        send_proxy_channels: dict,  # send_proxy_channels[tree] = proxy send peers of tree
+        data: cp.ndarray,
+        data_chunk_offsets: dict,   # data_chunk_offsets[tree] = chunk offset of tree
+        data_chunk_sizes: dict,     # data_chunk_sizes[tree] = data nchunks of tree
+        total_chunks: int,
+        node_types: dict,     # node_types[tree]: <0: reduce node; =0: root node; >0: broadcast node.
+        ntrees,
+        n_parallel_sm_blocks: int = 1,
+        nthreads=1024,
+    ):
+        n_peers = max([len(recv_sm_channels.get(tree, [])) + len(recv_proxy_channels.get(tree, [])) for tree in range(ntrees)] +
+                      [len(send_sm_channels.get(tree, [])) + len(send_proxy_channels.get(tree, [])) for tree in range(ntrees)] + [1])
+        assert n_peers <= 8, "N_PEERS=8 in pipeline_kernel.cu"
+        n_recv_sm_channels = sum(len(l) for l in recv_sm_channels.values())
+        n_send_sm_channels = sum(len(l) for l in send_sm_channels.values())
+        n_recv_proxy_channels = sum(len(l) for l in recv_proxy_channels.values())
+        n_send_proxy_channels = sum(len(l) for l in send_proxy_channels.values())
+        assert n_recv_proxy_channels + n_send_proxy_channels <= 128, "see https://github.com/microsoft/mscclpp/issues/242"
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        self.kernel_file = ALLGATHER_PARALLEL_SM_KERNEL_FILE
+        assert "parallel_sm" in self.kernel_file
+        self.kernel_name = "pipeline_schedule"
+        self._kernel = KernelBuilder(
+            file=self.kernel_file,
+            kernel_name=self.kernel_name,
+            file_dir=file_dir,
+        ).get_compiled_kernel()
+        self.nblocks = 0
+        self.nthreads = nthreads
+        self.data = data
+
+        self.data_chunk_offsets = []
+        self.data_chunk_sizes = []
+        self.total_chunks = total_chunks
+
+        recv_sm_handles_arr = []
+        send_sm_handles_arr = []
+        recv_proxy_handles_arr = []
+        send_proxy_handles_arr = []
+        block_recv_sm_ch_starts = []
+        block_send_sm_ch_starts = []
+        block_recv_proxy_ch_starts = []
+        block_send_proxy_ch_starts = []
+        nrecvs_sm = []
+        nsends_sm = []
+        nrecvs_proxy = []
+        nsends_proxy = []
+        node_types_arr = []
+        sm_block_idx_arr = []
+        sm_block_cnt_arr = []
+        sm_syncer_offset = 0
+        sm_syncer_indics = []
+        for tree in range(ntrees):
+            assert (tree in recv_sm_channels or tree in send_sm_channels or 
+                    tree in recv_proxy_channels or tree in send_proxy_channels)
+            assert tree in data_chunk_offsets
+            assert tree in data_chunk_sizes
+            assert tree in node_types
+            assert data_chunk_offsets[tree] + data_chunk_sizes[tree] <= total_chunks
+
+            assert node_types[tree] > 0
+            assert len(recv_sm_channels.get(tree, [])) + len(recv_proxy_channels.get(tree, [])) <= 1
+
+            nrecv_sm = len(recv_sm_channels.get(tree, []))
+            nrecv_proxy = len(recv_proxy_channels.get(tree, []))
+            assert nrecv_sm <= 1
+            local_nblocks = max(nrecv_sm * n_parallel_sm_blocks, 1)
+            self.nblocks += local_nblocks
+
+            block_recv_sm_ch_starts += [len(recv_sm_handles_arr)] * local_nblocks
+            block_recv_proxy_ch_starts += [len(recv_proxy_handles_arr)] * local_nblocks
+            recv_sm_handles = [ch.device_handle().raw for ch in recv_sm_channels.get(tree, [])]
+            recv_proxy_handles = [ch.device_handle().raw for ch in recv_proxy_channels.get(tree, [])]
+            assert len(recv_sm_handles) + len(recv_proxy_handles) <= 1
+            recv_sm_handles_arr += recv_sm_handles
+            recv_proxy_handles_arr += recv_proxy_handles
+            nrecvs_sm += [nrecv_sm] * local_nblocks
+            nrecvs_proxy += [nrecv_proxy] * local_nblocks
+
+            block_send_sm_ch_starts += [len(send_sm_handles_arr)] * local_nblocks
+            block_send_proxy_ch_starts += [len(send_proxy_handles_arr)] * local_nblocks
+            send_sm_handles = [ch.device_handle().raw for ch in send_sm_channels.get(tree, [])]
+            send_proxy_handles = [ch.device_handle().raw for ch in send_proxy_channels.get(tree, [])]
+            assert len(send_sm_handles) + len(send_proxy_handles) <= n_peers
+            send_sm_handles_arr += send_sm_handles
+            send_proxy_handles_arr += send_proxy_handles
+            nsends_sm += [len(send_sm_handles)] * local_nblocks
+            nsends_proxy += [len(send_proxy_handles)] * local_nblocks
+            node_types_arr += [node_types[tree]] * local_nblocks
+
+            if nrecv_sm > 0:
+                assert nrecv_proxy == 0
+                assert local_nblocks == n_parallel_sm_blocks
+                sm_block_idx_arr += list(range(n_parallel_sm_blocks)) * nrecv_sm
+                sm_block_cnt_arr += [n_parallel_sm_blocks] * nrecv_sm * n_parallel_sm_blocks
+                for i in range(nrecv_sm):
+                    sm_syncer_indics += [sm_syncer_offset] * n_parallel_sm_blocks
+                    sm_syncer_offset += 1
+            else:
+                sm_block_idx_arr += [0]
+                sm_block_cnt_arr += [0]
+                sm_syncer_indics += [None]                
+
+            self.data_chunk_offsets += [data_chunk_offsets[tree]] * local_nblocks
+            self.data_chunk_sizes += [data_chunk_sizes[tree]] * local_nblocks
+        
+        if self.nblocks > 128:
+            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > 128", self.nblocks)
+        if self.nblocks > 100:
+            print(f"Warning: nblocks={self.nblocks} > 100", flush=True)
+
+        recv_sm_handles_mem = cp.asarray(memoryview(b"".join(recv_sm_handles_arr)), dtype=cp.uint8)
+        send_sm_handles_mem = cp.asarray(memoryview(b"".join(send_sm_handles_arr)), dtype=cp.uint8)
+        recv_proxy_handles_mem = cp.asarray(memoryview(b"".join(recv_proxy_handles_arr)), dtype=cp.uint8)
+        send_proxy_handles_mem = cp.asarray(memoryview(b"".join(send_proxy_handles_arr)), dtype=cp.uint8)
+        assert len(recv_sm_handles_arr) > 0 or recv_sm_handles_mem.data.ptr == 0
+        assert len(send_sm_handles_arr) > 0 or send_sm_handles_mem.data.ptr == 0
+        assert len(recv_proxy_handles_arr) > 0 or recv_proxy_handles_mem.data.ptr == 0
+        assert len(send_proxy_handles_arr) > 0 or send_proxy_handles_mem.data.ptr == 0
+        block_recv_sm_ch_starts = cp.array(block_recv_sm_ch_starts, dtype=cp.int32)
+        block_send_sm_ch_starts = cp.array(block_send_sm_ch_starts, dtype=cp.int32)
+        block_recv_proxy_ch_starts = cp.array(block_recv_proxy_ch_starts, dtype=cp.int32)
+        block_send_proxy_ch_starts = cp.array(block_send_proxy_ch_starts, dtype=cp.int32)
+        nrecvs_sm = cp.array(nrecvs_sm, dtype=cp.int32)
+        nsends_sm = cp.array(nsends_sm, dtype=cp.int32)
+        nrecvs_proxy = cp.array(nrecvs_proxy, dtype=cp.int32)
+        nsends_proxy = cp.array(nsends_proxy, dtype=cp.int32)
+        node_types_arr = cp.array(node_types_arr, dtype=cp.byte)
+        sm_block_idx_arr = cp.array(sm_block_idx_arr, dtype=cp.int32)
+        sm_block_cnt_arr = cp.array(sm_block_cnt_arr, dtype=cp.int32)
+        sm_syncer_num = sm_syncer_offset
+        sm_syncer_arr = cp.empty(sm_syncer_num * 12, dtype=cp.bool_)
+        sm_syncer_ptr_arr = [struct.pack("P", sm_syncer_arr.data.ptr + i * 12) if i is not None else struct.pack("P", 0) for i in sm_syncer_indics]
+        sm_syncer_arr_mem = cp.asarray(memoryview(b"".join(sm_syncer_ptr_arr)), dtype=cp.uint8)
+
+        assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
+        assert len(recv_proxy_handles_arr) == n_recv_proxy_channels and len(send_proxy_handles_arr) == n_send_proxy_channels
+        assert block_recv_sm_ch_starts.shape[0] == self.nblocks and block_send_sm_ch_starts.shape[0] == self.nblocks
+        assert block_recv_proxy_ch_starts.shape[0] == self.nblocks and block_send_proxy_ch_starts.shape[0] == self.nblocks
+        assert nrecvs_sm.shape[0] == self.nblocks and nsends_sm.shape[0] == self.nblocks
+        assert nrecvs_proxy.shape[0] == self.nblocks and nsends_proxy.shape[0] == self.nblocks
+        assert node_types_arr.shape[0] == self.nblocks
+        assert sm_syncer_num == n_recv_sm_channels
+        assert sm_block_idx_arr.shape[0] == self.nblocks
+        assert sm_block_cnt_arr.shape[0] == self.nblocks
+        assert len(sm_syncer_ptr_arr) == self.nblocks
+        assert len(self.data_chunk_offsets) == self.nblocks
+        assert len(self.data_chunk_sizes) == self.nblocks
+
+        self.params = b""
+        self.params += struct.pack("P", recv_sm_handles_mem.data.ptr) + struct.pack("P", send_sm_handles_mem.data.ptr)
+        self.params += struct.pack("P", recv_proxy_handles_mem.data.ptr) + struct.pack("P", send_proxy_handles_mem.data.ptr)
+        self.params += struct.pack("P", 0)
+        self.params += struct.pack("P", block_recv_sm_ch_starts.data.ptr) + struct.pack("P", block_send_sm_ch_starts.data.ptr)
+        self.params += struct.pack("P", block_recv_proxy_ch_starts.data.ptr) + struct.pack("P", block_send_proxy_ch_starts.data.ptr)
+        self.params += struct.pack("P", 0)
+        self.params += struct.pack("P", nrecvs_sm.data.ptr) + struct.pack("P", nsends_sm.data.ptr)
+        self.params += struct.pack("P", nrecvs_proxy.data.ptr) + struct.pack("P", nsends_proxy.data.ptr)
+        self.params += struct.pack("P", node_types_arr.data.ptr) + struct.pack("Q", 0) + struct.pack("P", data.data.ptr)
+        self.params += struct.pack("P", sm_block_idx_arr.data.ptr) + struct.pack("P", sm_block_cnt_arr.data.ptr)
+        self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr)
+
+        # keep references to avoid garbage collection
+        self._temp = [recv_sm_channels, send_sm_channels,
+                      recv_proxy_channels, send_proxy_channels,
+                      recv_sm_handles_mem, send_sm_handles_mem,
+                      recv_proxy_handles_mem, send_proxy_handles_mem,
+                      data, block_recv_sm_ch_starts, block_send_sm_ch_starts,
+                      block_recv_proxy_ch_starts, block_send_proxy_ch_starts,
+                      nrecvs_sm, nsends_sm, nrecvs_proxy, nsends_proxy,
+                      node_types_arr, sm_block_idx_arr, sm_block_cnt_arr,
+                      sm_syncer_arr, sm_syncer_ptr_arr, sm_syncer_arr_mem]
+        self._data_starts_nelem_totals = {}
+        self._params = {}
+    
+
+    def prepare_params(self, nelem_total, nelem_per_send):
         assert nelem_total <= self.data.shape[0]
         assert nelem_per_send % 4 == 0  # aligned by int4
 
@@ -956,7 +1174,7 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 
 def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                      connections: dict, connection_types: dict, data: cp.ndarray,
-                     proxy_service: ProxyService = None):
+                     proxy_service: ProxyService = None, n_parallel_sm_blocks: int = None):
     for dest, connect in connections.items():
         transport = connect.transport()
         connect_type = connection_types[dest]
@@ -1009,13 +1227,21 @@ def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
         data_chunk_offsets[tb_id] = chunk
         data_chunk_sizes[tb_id] = Cs[u, i]
 
-    args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
-                recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
-                data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
-                total_chunks=total_chunks, scratch_size=0,
-                recv_sm_scratches={}, recv_proxy_scratches={},
-                node_types=node_types, nblocks=nblocks)
-    kernel = PipelineKernel(**args)
+    if n_parallel_sm_blocks is not None:
+        args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
+                    recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
+                    data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
+                    total_chunks=total_chunks, node_types=node_types, ntrees=nblocks,
+                    n_parallel_sm_blocks=n_parallel_sm_blocks)
+        kernel = AllgatherParallelSMPipelineKernel(**args)
+    else:
+        args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
+                    recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
+                    data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
+                    total_chunks=total_chunks, scratch_size=0,
+                    recv_sm_scratches={}, recv_proxy_scratches={},
+                    node_types=node_types, nblocks=nblocks)
+        kernel = PipelineKernel(**args)
 
     return kernel
 
