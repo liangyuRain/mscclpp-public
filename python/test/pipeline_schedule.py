@@ -27,6 +27,7 @@ ALLGATHER_PARALLEL_SM_KERNEL_FILE = "pipeline_allgather_kernel_parallel_sm.cu"
 REDUCE_SCATTER_PARALLEL_SM_KERNEL_FILE = "pipeline_reduceScatter_kernel_parallel_sm.cu"
 
 MAX_NLOOPS = 1048576  # also defined in pipeline_reduceScatter_kernel.cu
+MAX_NBLOCKS = 110
 
 
 # Exception may not be triggered at all ranks.
@@ -66,8 +67,8 @@ class PipelineKernel:
         nblocks,
         nthreads=1024,
     ):
-        if nblocks > 128:
-            raise ThreadBlockLimitException(f"nblocks={nblocks} > 128", nblocks)
+        if nblocks > MAX_NBLOCKS:
+            raise ThreadBlockLimitException(f"nblocks={nblocks} > MAX_NBLOCKS", nblocks)
         if nblocks > 100:
             print(f"Warning: nblocks={nblocks} > 100", flush=True)
         n_peers = max([len(recv_sm_channels.get(bid, [])) + len(recv_proxy_channels.get(bid, [])) for bid in range(nblocks)] +
@@ -367,8 +368,8 @@ class AllgatherParallelSMPipelineKernel:
             self.data_chunk_offsets += [data_chunk_offsets[tree]] * local_nblocks
             self.data_chunk_sizes += [data_chunk_sizes[tree]] * local_nblocks
         
-        if self.nblocks > 128:
-            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > 128", self.nblocks)
+        if self.nblocks > MAX_NBLOCKS:
+            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > MAX_NBLOCKS", self.nblocks)
         if self.nblocks > 100:
             print(f"Warning: nblocks={self.nblocks} > 100", flush=True)
 
@@ -612,8 +613,8 @@ class ReduceScatterPipelineKernel:
                 self.data_chunk_offsets += [data_chunk_offsets[tree]]
                 self.data_chunk_sizes += [data_chunk_sizes[tree]]
 
-        if self.nblocks > 128:
-            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > 128", self.nblocks)
+        if self.nblocks > MAX_NBLOCKS:
+            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > MAX_NBLOCKS", self.nblocks)
         if self.nblocks > 100:
             print(f"Warning: nblocks={self.nblocks} > 100", flush=True)
 
@@ -739,8 +740,11 @@ class ReduceScatterParallelSMPipelineKernel:
         recv_proxy_scratches: dict,
         ntrees: int,
         n_parallel_sm_blocks: int = 1,
+        leaf_nodes: dict = None,
+        skip_leaf_tb: bool = False,
         nthreads=1024,
     ):
+        assert (leaf_nodes is not None) == skip_leaf_tb
         n_peers = max([len(recv_sm_channels.get(t, [])) + len(recv_proxy_channels.get(t, [])) for t in range(ntrees)] +
                       [len(send_sm_channels.get(t, [])) + len(send_proxy_channels.get(t, [])) for t in range(ntrees)] + [1])
         assert n_peers <= 8, "N_PEERS=8 in pipeline_kernel.cu"
@@ -785,6 +789,7 @@ class ReduceScatterParallelSMPipelineKernel:
         sm_block_cnt_arr = []
         sm_syncer_offset = 0
         sm_syncer_indics = []
+        skip_signal_arr = []
         self.nblocks = 0
         null_buf = cp.empty(0, dtype=cp.int32)
         assert null_buf.data.ptr == 0
@@ -816,7 +821,12 @@ class ReduceScatterParallelSMPipelineKernel:
                 self.nblocks += local_nblocks
                 for i in range(nrecv_sm):
                     recv_sm_channel_indics += [len(recv_sm_handles_arr) + i] * n_parallel_sm_blocks
+                    if leaf_nodes is not None:
+                        skip_signal_arr += [leaf_nodes[tree][i]]  * n_parallel_sm_blocks
+                    else:
+                        skip_signal_arr += [False] * n_parallel_sm_blocks
                 recv_sm_channel_indics += [-1] * nrecv_proxy
+                skip_signal_arr += [False] * nrecv_proxy
                 send_sm_channel_indics += [len(send_sm_handles_arr) if send_sm else -1] * local_nblocks
                 recv_proxy_channel_indics += [-1] * nrecv_sm * n_parallel_sm_blocks + [len(recv_proxy_handles_arr) + i for i in range(nrecv_proxy)]
                 send_proxy_channel_indics += [len(send_proxy_handles_arr) if send_proxy else -1] * local_nblocks
@@ -853,7 +863,7 @@ class ReduceScatterParallelSMPipelineKernel:
 
                 self.data_chunk_offsets += [data_chunk_offsets[tree]] * local_nblocks
                 self.data_chunk_sizes += [data_chunk_sizes[tree]] * local_nblocks
-            else:
+            elif leaf_nodes is None or send_proxy:
                 self.nblocks += 1
                 recv_sm_channel_indics += [-1]
                 send_sm_channel_indics += [len(send_sm_handles_arr) if send_sm else -1]
@@ -882,11 +892,14 @@ class ReduceScatterParallelSMPipelineKernel:
                 sm_block_cnt_arr += [0]
                 sm_syncer_indics += [None]
 
+                assert leaf_nodes is None or send_proxy
+                skip_signal_arr += [False]
+
                 self.data_chunk_offsets += [data_chunk_offsets[tree]]
                 self.data_chunk_sizes += [data_chunk_sizes[tree]]
 
-        if self.nblocks > 128:
-            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > 128", self.nblocks)
+        if self.nblocks > MAX_NBLOCKS:
+            raise ThreadBlockLimitException(f"nblocks={self.nblocks} > MAX_NBLOCKS", self.nblocks)
         if self.nblocks > 100:
             print(f"Warning: nblocks={self.nblocks} > 100", flush=True)
 
@@ -926,8 +939,14 @@ class ReduceScatterParallelSMPipelineKernel:
         sm_syncer_arr = cp.empty(sm_syncer_num * 12, dtype=cp.bool_)
         sm_syncer_ptr_arr = [struct.pack("P", sm_syncer_arr.data.ptr + i * 12) if i is not None else struct.pack("P", 0) for i in sm_syncer_indics]
         sm_syncer_arr_mem = cp.asarray(memoryview(b"".join(sm_syncer_ptr_arr)), dtype=cp.uint8)
+        skip_signal_arr = cp.array(skip_signal_arr, dtype=cp.bool_)
 
-        assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
+        if leaf_nodes is None:
+            assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
+        else:
+            assert len(recv_sm_handles_arr) == n_recv_sm_channels
+            assert len(send_sm_handles_arr) == sum(0 if len(recv_sm_channels.get(tree, [])) + len(recv_proxy_channels.get(tree, [])) == 0
+                                                   else len(send_sm_channels.get(tree, [])) for tree in range(ntrees))
         assert len(recv_proxy_handles_arr) == n_recv_proxy_channels and len(send_proxy_handles_arr) == n_send_proxy_channels
         assert len(recv_scratches_arr) == self.nblocks
         assert recv_sm_channel_indics.shape[0] == self.nblocks
@@ -941,6 +960,7 @@ class ReduceScatterParallelSMPipelineKernel:
         assert sm_block_idx_arr.shape[0] == self.nblocks
         assert sm_block_cnt_arr.shape[0] == self.nblocks
         assert len(sm_syncer_ptr_arr) == self.nblocks
+        assert skip_signal_arr.shape[0] == self.nblocks
         assert len(self.data_chunk_offsets) == self.nblocks
         assert len(self.data_chunk_sizes) == self.nblocks
 
@@ -955,7 +975,7 @@ class ReduceScatterParallelSMPipelineKernel:
             self.params += struct.pack("P", send_status_arr_mem.data.ptr)
         self.params += struct.pack("P", first_block_arr.data.ptr)
         self.params += struct.pack("P", sm_block_idx_arr.data.ptr) + struct.pack("P", sm_block_cnt_arr.data.ptr)
-        self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr)
+        self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr) + struct.pack("P", skip_signal_arr.data.ptr)
 
         
         # keep references to avoid garbage collection
@@ -969,7 +989,7 @@ class ReduceScatterParallelSMPipelineKernel:
                       reduce_counts_arr, nrecv_peers_arr, send_status_arr,
                       reduce_counts_ptr_arr, send_status_ptr_arr,
                       reduce_counts_arr_mem, send_status_arr_mem,
-                      first_block_arr,
+                      first_block_arr, skip_signal_arr,
                       sm_block_idx_arr, sm_block_cnt_arr,
                       sm_syncer_arr, sm_syncer_ptr_arr, sm_syncer_arr_mem]
         self._data_starts_nelem_totals = {}
@@ -1035,10 +1055,11 @@ IB_TRANSPORTS = {
 
 def make_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, connections: dict,
                   connection_types: dict, recv_peers: list, send_peers: list, data: cp.ndarray,
-                  scratch_size: int):
+                  scratch_size: int, leaf_nodes: dict = None):
     recv_peers, send_peers = list(recv_peers), list(send_peers)
     recv_sm_channels, recv_proxy_channels = [], []
     recv_sm_scratches, recv_proxy_scratches = ([], []) if scratch_size is not None else (None, None)
+    recv_leaf_nodes = []
     for dest in recv_peers:
         connect = connections[dest]
         recv_buf = cp.empty(scratch_size, dtype=cp.int32) if scratch_size is not None else data
@@ -1047,6 +1068,10 @@ def make_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, co
             if scratch_size is not None:
                 recv_sm_scratches.append(recv_buf)
             recv_sm_channels.append(group.make_sm_channel(recv_buf, connect, dest))
+            if leaf_nodes is not None:
+                recv_leaf_nodes.append(leaf_nodes[dest])
+            else:
+                recv_leaf_nodes.append(False)
         elif connection_types[dest] == "proxy":
             assert connect.transport() == Transport.CudaIpc or connect.transport() in IB_TRANSPORTS
             if scratch_size is not None:
@@ -1068,10 +1093,12 @@ def make_channels(group: mscclpp_comm.CommGroup, proxy_service: ProxyService, co
     send_proxy_channels = [group.make_proxy_channel(proxy_service, data, connections[dest], dest) 
                            for dest in send_peers if connection_types[dest] == "proxy"]
     if scratch_size is not None:
+        assert len(recv_sm_channels) == len(recv_leaf_nodes)
         return (recv_sm_channels, send_sm_channels,
                 recv_proxy_channels, send_proxy_channels,
-                recv_sm_scratches, recv_proxy_scratches)
+                recv_sm_scratches, recv_proxy_scratches, recv_leaf_nodes)
     else:
+        assert leaf_nodes is None, "allgather cannot skip leaf nodes"
         return (recv_sm_channels, send_sm_channels,
                 recv_proxy_channels, send_proxy_channels)
 
@@ -1124,7 +1151,7 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             nblocks += 1
             (recv_sm_channels[tb_id], send_sm_channels[tb_id],
              recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
-             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
+             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id], _) = \
                 make_channels(group=group, proxy_service=proxy_service, connections=connections,
                               connection_types=connection_types, recv_peers=children,
                               send_peers=children, data=data, scratch_size=scratch_size)
@@ -1137,7 +1164,7 @@ def allreduce_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
             nblocks += 1
             (recv_sm_channels[tb_id], send_sm_channels[tb_id],
              recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
-             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
+             recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id], _) = \
                 make_channels(group=group, proxy_service=proxy_service, connections=connections,
                               connection_types=connection_types, recv_peers=children,
                               send_peers=list(test_G.predecessors(group.my_rank)),
@@ -1249,7 +1276,8 @@ def allgather_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
 def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                           connections: dict, connection_types: dict, data: cp.ndarray,
                           scratch_size: int, proxy_service: ProxyService = None,
-                          use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = None):
+                          use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = None,
+                          skip_leaf_tb: bool = False):
     for dest, connect in connections.items():
         transport = connect.transport()
         connect_type = connection_types[dest]
@@ -1279,6 +1307,7 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
     data_chunk_offsets = {}
     data_chunk_sizes = {}
     nblocks = 0
+    leaf_nodes = {}
 
     for (u, i), ps in sorted(Ts.items(), key=lambda x: x[0]):
         test_G = nx.DiGraph()
@@ -1288,17 +1317,22 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
         chunk = u * nchunks_per_shard + chunk_starts[u, i]
 
         children = list(test_G.successors(group.my_rank))
+        if skip_leaf_tb:
+            children_leaf_nodes = {child: test_G.out_degree(child) == 0 for child in children}
+        else:
+            children_leaf_nodes = None
 
         # reduce node
         tb_id = nblocks
         nblocks += 1
         (recv_sm_channels[tb_id], send_sm_channels[tb_id],
             recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
-            recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id]) = \
+            recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id], leaf_nodes[tb_id]) = \
             make_channels(group=group, proxy_service=proxy_service, connections=connections,
                             connection_types=connection_types, recv_peers=children,
                             send_peers=list(test_G.predecessors(group.my_rank)),
-                            data=data, scratch_size=scratch_size)
+                            data=data, scratch_size=scratch_size,
+                            leaf_nodes=children_leaf_nodes)
         assert len(send_sm_channels[tb_id]) + len(send_proxy_channels[tb_id]) <= 1
         node_types[tb_id] = -1
         data_chunk_offsets[tb_id] = chunk
@@ -1306,6 +1340,7 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
     
     assert not (use_reduceScatter_kernel and n_parallel_sm_blocks is not None)
     if use_reduceScatter_kernel:
+        assert not skip_leaf_tb
         for tree in range(nblocks):
             if len(recv_sm_channels[tree]) == 0:
                 assert len(recv_sm_scratches[tree]) == 0
@@ -1333,9 +1368,11 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
                 data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
                 total_chunks=total_chunks, scratch_size=scratch_size,
                 recv_sm_scratches=recv_sm_scratches, recv_proxy_scratches=recv_proxy_scratches,
-                ntrees=nblocks, n_parallel_sm_blocks=n_parallel_sm_blocks)
+                ntrees=nblocks, n_parallel_sm_blocks=n_parallel_sm_blocks,
+                leaf_nodes=leaf_nodes if skip_leaf_tb else None, skip_leaf_tb=skip_leaf_tb)
         kernel = ReduceScatterParallelSMPipelineKernel(**args)
     else:
+        assert not skip_leaf_tb
         args = dict(recv_sm_channels=recv_sm_channels, send_sm_channels=send_sm_channels,
                 recv_proxy_channels=recv_proxy_channels, send_proxy_channels=send_proxy_channels,
                 data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,

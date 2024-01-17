@@ -19,8 +19,10 @@ from .pipeline_schedule import (
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int,
-                                scratch_size: int, sm_node_size: int, n_parallel_sm_blocks: int):
+                                scratch_size: int, sm_node_size: int, n_parallel_sm_blocks: int,
+                                skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_send_recv_reduce_chain("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -28,7 +30,8 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
               f"nelem_total={nelem_total}, "
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     proxy_service = ProxyService()
 
@@ -38,6 +41,7 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
     if group.my_rank == 0:
         # sender
         dest = group.my_rank + 1
+        src = None
         if group.my_rank // sm_node_size == dest // sm_node_size:
             send_sm_channels = {0: [group.make_sm_channel(memory, connections[dest], dest)]}
         else:
@@ -72,14 +76,25 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
     total_chunks = 1
     ntrees = 1
 
-    kernel = ReduceScatterParallelSMPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
-                                                   memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
-                                                   recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks)
-    
-    proxy_service.start_proxy()
-    group.barrier()
-    kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
-    cp.cuda.runtime.deviceSynchronize()
+    if group.my_rank == 0 and skip_leaf_tb and group.my_rank // sm_node_size == dest // sm_node_size:
+        proxy_service.start_proxy()
+        group.barrier()
+    else:
+        if skip_leaf_tb:
+            leaf_nodes = {0: [] if src is None else [src == 0]}
+        else:
+            leaf_nodes = None
+        kernel = ReduceScatterParallelSMPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                                                       memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
+                                                       recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks,
+                                                       leaf_nodes, skip_leaf_tb)
+        proxy_service.start_proxy()
+        group.barrier()
+        kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
+        cp.cuda.runtime.deviceSynchronize()
+
+    if skip_leaf_tb:
+        group.barrier()
     assert cp.array_equal(memory, cp.array([group.my_rank + 1] * nelem_total, dtype=cp.int32))
     proxy_service.stop_proxy()
 
@@ -90,8 +105,9 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int,
-                          sm_node_size: int, n_parallel_sm_blocks: int):
+                          sm_node_size: int, n_parallel_sm_blocks: int, skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_multipeer_reduce("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -99,7 +115,8 @@ def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total:
               f"nelem_total={nelem_total}, "
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     proxy_service = ProxyService()
 
@@ -128,14 +145,28 @@ def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total:
     total_chunks = 1
     ntrees = 1
 
-    kernel = ReduceScatterParallelSMPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
-                                                   memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
-                                                   recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks)
-    
-    proxy_service.start_proxy()
-    group.barrier()
-    kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
-    cp.cuda.runtime.deviceSynchronize()
+    if group.my_rank != 0 and skip_leaf_tb and group.my_rank // sm_node_size == 0 // sm_node_size:
+        proxy_service.start_proxy()
+        group.barrier()
+    else:
+        if skip_leaf_tb:
+            if group.my_rank == 0:
+                leaf_nodes = {0: [True for _ in range(1, group.nranks)]}
+            else:
+                leaf_nodes = {0: []}
+        else:
+            leaf_nodes = None
+        kernel = ReduceScatterParallelSMPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                                                       memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
+                                                       recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks,
+                                                       leaf_nodes, skip_leaf_tb)
+        proxy_service.start_proxy()
+        group.barrier()
+        kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
+        cp.cuda.runtime.deviceSynchronize()
+
+    if skip_leaf_tb:
+        group.barrier()
     if group.my_rank == 0:
         assert cp.array_equal(memory, cp.array([group.nranks] * nelem_total, dtype=cp.int32))
     else:
@@ -148,8 +179,9 @@ def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total:
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size: int, sm_node_size: int,
-                             n_parallel_sm_blocks: int):
+                             n_parallel_sm_blocks: int, skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_tree_reduce_to_root("
@@ -157,13 +189,15 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
               f"nelem_total={nelem_total}, "
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     proxy_service = ProxyService()
 
     tree = [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5), (2, 6), (3, 7)]
     recv_peers = [src for dest, src in tree if dest == group.my_rank]
     send_peers = [dest for dest, src in tree if src == group.my_rank]
+    assert len(send_peers) <= 1
 
     memory = cp.ones(nelem_total, dtype=cp.int32)
     recv_sm_channels, send_sm_channels, recv_sm_scratches = {}, {}, {}
@@ -194,14 +228,25 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
     total_chunks = 1
     ntrees = 1
 
-    kernel = ReduceScatterParallelSMPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
-                                                   memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
-                                                   recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks)
-    
-    proxy_service.start_proxy()
-    group.barrier()
-    kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
-    cp.cuda.runtime.deviceSynchronize()
+    if group.my_rank in [4, 5, 6, 7] and skip_leaf_tb and group.my_rank // sm_node_size == send_peers[0] // sm_node_size:
+        proxy_service.start_proxy()
+        group.barrier()
+    else:
+        if skip_leaf_tb:
+            leaf_nodes = {0: [src in [4, 5, 6, 7] for src in recv_peers]}
+        else:
+            leaf_nodes = None
+        kernel = ReduceScatterParallelSMPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                                                       memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
+                                                       recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks,
+                                                       leaf_nodes, skip_leaf_tb)
+        proxy_service.start_proxy()
+        group.barrier()
+        kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
+        cp.cuda.runtime.deviceSynchronize()
+
+    if skip_leaf_tb:
+        group.barrier()
     expected_res = {
         0: 8, 1: 4, 2: 3, 3: 2, 4: 1, 5: 1, 6: 1, 7: 1
     }
@@ -217,9 +262,10 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
 @pytest.mark.parametrize("ninstance", [1, 2, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_scatter_length: int,
                                 scratch_size: int, ninstance: int, sm_node_size: int,
-                                n_parallel_sm_blocks: int):
+                                n_parallel_sm_blocks: int, skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_allpair_reduce_scatter("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -228,7 +274,8 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
               f"scratch_size={scratch_size}, "
               f"ninstance={ninstance}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
                         for dest in connections.keys()}
@@ -249,10 +296,11 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
                                     data=memory,
                                     scratch_size=scratch_size,
                                     proxy_service=proxy_service,
-                                    n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                    skip_leaf_tb=skip_leaf_tb)
         exception_triggered = False
     except ThreadBlockLimitException as e:
-        assert (group.nranks, ninstance, sm_node_size, n_parallel_sm_blocks) == (8, 4, 8, 4)
+        print(f"ThreadBlockLimitException: {e}", flush=True)
         exception_triggered = True
 
     if (group.nranks, ninstance, sm_node_size, n_parallel_sm_blocks) == (8, 4, 8, 4):
@@ -269,6 +317,8 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
     group.barrier()
     kernel(nelem_total=reduce_scatter_length, nelem_per_send=nelem_per_send)
     cp.cuda.runtime.deviceSynchronize()
+    if skip_leaf_tb:
+        group.barrier()
     expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.int32)
     assert cp.array_equal(memory[shard_begin: shard_end], expected)
     proxy_service.stop_proxy()
@@ -281,9 +331,10 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
 @pytest.mark.parametrize("ninstance", [1, 2])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_scatter_length: int,
                              scratch_size: int, ninstance: int, sm_node_size: int,
-                             n_parallel_sm_blocks: int):
+                             n_parallel_sm_blocks: int, skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_ring_reduce_scatter("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -292,7 +343,8 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
               f"scratch_size={scratch_size}, "
               f"ninstance={ninstance}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
                         for dest in connections.keys()}
@@ -313,7 +365,8 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
                                    data=memory,
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=skip_leaf_tb)
 
     shard_size = reduce_scatter_length // group.nranks
     shard_begin = shard_size * group.my_rank
@@ -323,6 +376,8 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
     group.barrier()
     kernel(nelem_total=reduce_scatter_length, nelem_per_send=nelem_per_send)
     cp.cuda.runtime.deviceSynchronize()
+    if skip_leaf_tb:
+        group.barrier()
     expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.int32)
     assert cp.array_equal(memory[shard_begin: shard_end], expected)
     proxy_service.stop_proxy()
@@ -333,8 +388,9 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
 @pytest.mark.parametrize("scratch_size", [512, 1024])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, scratch_size: int,
-                             sm_node_size: int, n_parallel_sm_blocks: int):
+                             sm_node_size: int, n_parallel_sm_blocks: int, skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_tree_reduce_scatter("
@@ -342,7 +398,8 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
               f"reduce_scatter_length={reduce_scatter_length}, "
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
                         for dest in connections.keys()}
@@ -367,7 +424,8 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
                                    data=memory,
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=skip_leaf_tb)
     
     shard_size = reduce_scatter_length // group.nranks
     shard_begin = shard_size * group.my_rank
@@ -377,6 +435,8 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
     group.barrier()
     kernel(nelem_total=reduce_scatter_length, nelem_per_send=nelem_per_send)
     cp.cuda.runtime.deviceSynchronize()
+    if skip_leaf_tb:
+        group.barrier()
     expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.int32)
     assert cp.array_equal(memory[shard_begin: shard_end], expected)
     proxy_service.stop_proxy()
@@ -388,8 +448,10 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
 @pytest.mark.parametrize("iters", [2, 10])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, scratch_size: int,
-                                iters: int, sm_node_size: int, n_parallel_sm_blocks: int):
+                                iters: int, sm_node_size: int, n_parallel_sm_blocks: int,
+                                skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_multrun_reduce_scatter("
@@ -398,7 +460,8 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
               f"scratch_size={scratch_size}, "
               f"iters={iters}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
                         for dest in connections.keys()}
@@ -429,13 +492,19 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
                                    data=memory,
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=skip_leaf_tb)
 
     proxy_service.start_proxy()
     for _ in range(iters):
         cp.copyto(memory, init_data)
+        if skip_leaf_tb:
+            cp.cuda.runtime.deviceSynchronize()
+            group.barrier()
         kernel(nelem_total=reduce_scatter_length, nelem_per_send=nelem_per_send)
         cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
+        if skip_leaf_tb:
+            group.barrier()
         assert cp.array_equal(memory[shard_begin: shard_end], expected)
     proxy_service.stop_proxy()
 
@@ -444,15 +513,17 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
 @pytest.mark.parametrize("scratch_size", [512, 1024])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
 @pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_node_size: int,
-                                  n_parallel_sm_blocks: int):
+                                  n_parallel_sm_blocks: int, skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_vary_size_reduce_scatter("
               f"nelem_per_send={nelem_per_send}, "
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
-              f"n_parallel_sm_blocks={n_parallel_sm_blocks})", flush=True)
+              f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
                         for dest in connections.keys()}
@@ -480,7 +551,8 @@ def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_nod
                                    data=memory,
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=skip_leaf_tb)
 
     funcs = [kernel.get_func(nelem_total=length, nelem_per_send=nelem_per_send)
              for length in reduce_scatter_lengths]
@@ -492,7 +564,12 @@ def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_nod
     proxy_service.start_proxy()
     for i in range(len(reduce_scatter_lengths)):
         cp.copyto(memory, init_data)
+        if skip_leaf_tb:
+            cp.cuda.runtime.deviceSynchronize()
+            group.barrier()
         funcs[i]()
         cp.cuda.runtime.deviceSynchronize()  # Freeze if commented out or moved after `cp.array_equal`
+        if skip_leaf_tb:
+            group.barrier()
         assert cp.array_equal(memory[shard_begins[i]: shard_ends[i]], expected[i])
     proxy_service.stop_proxy()
