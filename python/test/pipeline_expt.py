@@ -284,7 +284,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                             data=data,
                                             scratch_size=scratch_size,
                                             proxy_service=proxy_service,
-                                            n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                            n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                            skip_leaf_tb=skip_leaf_tb)
     else:
         kernel = reduce_scatter_kernel(Ts, Cs, k,
                                        group=group,
@@ -392,6 +393,7 @@ if __name__ == "__main__":
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
                        n_parallel_sm_blocks=6,
+                       skip_leaf_tb=True,
                        hack=True)
 
     if group.my_rank == 0:

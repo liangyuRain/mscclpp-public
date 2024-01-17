@@ -1051,8 +1051,11 @@ class ReduceScatterParallelSMHackPipelineKernel:
         recv_proxy_scratches: dict,
         ntrees: int,
         n_parallel_sm_blocks: int = 1,
+        leaf_nodes: dict = None,
+        skip_leaf_tb: bool = False,
         nthreads=1024,
     ):
+        assert (leaf_nodes is not None) == skip_leaf_tb
         n_peers = max([len(recv_sm_channels.get(t, [])) + len(recv_proxy_channels.get(t, [])) for t in range(ntrees)] +
                       [len(send_sm_channels.get(t, [])) + len(send_proxy_channels.get(t, [])) for t in range(ntrees)] + [1])
         assert n_peers <= 8, "N_PEERS=8 in pipeline_kernel.cu"
@@ -1092,6 +1095,7 @@ class ReduceScatterParallelSMHackPipelineKernel:
         sm_block_cnt_arr = []
         sm_syncer_offset = 0
         sm_syncer_indics = []
+        skip_signal_arr = []
         self.nblocks = 0
         null_buf = cp.empty(0, dtype=cp.int32)
         assert null_buf.data.ptr == 0
@@ -1118,6 +1122,9 @@ class ReduceScatterParallelSMHackPipelineKernel:
             send_proxy = len(send_proxy_channels.get(tree, [])) > 0
             assert send_sm or send_proxy or recv_sm or recv_proxy
 
+            if leaf_nodes is not None and not recv_sm and not recv_proxy and not send_proxy:
+                continue
+
             self.nblocks += local_nblocks
             recv_sm_channel_indics += [len(recv_sm_handles_arr) if recv_sm else -1] * local_nblocks
             send_sm_channel_indics += [len(send_sm_handles_arr) if send_sm else -1] * local_nblocks
@@ -1142,6 +1149,14 @@ class ReduceScatterParallelSMHackPipelineKernel:
                 sm_syncer_offset += 1
             else:
                 sm_syncer_indics += [None]
+            
+            if recv_sm:
+                if leaf_nodes is not None:
+                    skip_signal_arr += [leaf_nodes[tree][0]]  * n_parallel_sm_blocks
+                else:
+                    skip_signal_arr += [False]  * n_parallel_sm_blocks
+            else:
+                skip_signal_arr += [False]
 
             self.data_chunk_offsets += [data_chunk_offsets[tree]] * local_nblocks
             self.data_chunk_sizes += [data_chunk_sizes[tree]] * local_nblocks
@@ -1173,8 +1188,14 @@ class ReduceScatterParallelSMHackPipelineKernel:
         sm_syncer_arr = cp.empty(sm_syncer_num * 12, dtype=cp.bool_)
         sm_syncer_ptr_arr = [struct.pack("P", sm_syncer_arr.data.ptr + i * 12) if i is not None else struct.pack("P", 0) for i in sm_syncer_indics]
         sm_syncer_arr_mem = cp.asarray(memoryview(b"".join(sm_syncer_ptr_arr)), dtype=cp.uint8)
+        skip_signal_arr = cp.array(skip_signal_arr, dtype=cp.bool_)
 
-        assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
+        if leaf_nodes is None:
+            assert len(recv_sm_handles_arr) == n_recv_sm_channels and len(send_sm_handles_arr) == n_send_sm_channels
+        else:
+            assert len(recv_sm_handles_arr) == n_recv_sm_channels
+            assert len(send_sm_handles_arr) == sum(0 if len(recv_sm_channels.get(tree, [])) + len(recv_proxy_channels.get(tree, [])) == 0
+                                                   else len(send_sm_channels.get(tree, [])) for tree in range(ntrees))
         assert len(recv_proxy_handles_arr) == n_recv_proxy_channels and len(send_proxy_handles_arr) == n_send_proxy_channels
         assert len(proxy_recv_scratches_arr) == self.nblocks
         assert recv_sm_channel_indics.shape[0] == self.nblocks
@@ -1184,6 +1205,7 @@ class ReduceScatterParallelSMHackPipelineKernel:
         assert sm_block_idx_arr.shape[0] == self.nblocks
         assert sm_block_cnt_arr.shape[0] == self.nblocks
         assert len(sm_syncer_ptr_arr) == self.nblocks
+        assert skip_signal_arr.shape[0] == self.nblocks
         assert len(self.data_chunk_offsets) == self.nblocks
         assert len(self.data_chunk_sizes) == self.nblocks
 
@@ -1194,7 +1216,7 @@ class ReduceScatterParallelSMHackPipelineKernel:
         self.params += struct.pack("P", recv_proxy_channel_indics.data.ptr) + struct.pack("P", send_proxy_channel_indics.data.ptr)
         self.params += struct.pack("P", proxy_recv_scratches_mem.data.ptr) + struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
         self.params += struct.pack("P", sm_block_idx_arr.data.ptr) + struct.pack("P", sm_block_cnt_arr.data.ptr)
-        self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr)
+        self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr) + struct.pack("P", skip_signal_arr.data.ptr)
 
         
         # keep references to avoid garbage collection
@@ -1206,7 +1228,7 @@ class ReduceScatterParallelSMHackPipelineKernel:
                       proxy_recv_scratches_mem, proxy_recv_scratches_arr,
                       recv_sm_channel_indics, send_sm_channel_indics,
                       recv_proxy_channel_indics, send_proxy_channel_indics,
-                      sm_block_idx_arr, sm_block_cnt_arr,
+                      sm_block_idx_arr, sm_block_cnt_arr, skip_signal_arr,
                       sm_syncer_arr, sm_syncer_ptr_arr, sm_syncer_arr_mem]
         self._data_starts_nelem_totals = {}
         self._params = {}
@@ -1603,7 +1625,7 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
 def reduce_scatter_kernel_hack(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup,
                                connections: dict, connection_types: dict, data: cp.ndarray,
                                scratch_size: int, proxy_service: ProxyService = None,
-                               n_parallel_sm_blocks: int = None):
+                               n_parallel_sm_blocks: int = None, skip_leaf_tb: bool = False):
     for dest, connect in connections.items():
         transport = connect.transport()
         connect_type = connection_types[dest]
@@ -1633,6 +1655,7 @@ def reduce_scatter_kernel_hack(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.C
     data_chunk_offsets = {}
     data_chunk_sizes = {}
     nblocks = 0
+    leaf_nodes = {}
 
     for (u, i), ps in sorted(Ts.items(), key=lambda x: x[0]):
         test_G = nx.DiGraph()
@@ -1642,18 +1665,22 @@ def reduce_scatter_kernel_hack(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.C
         chunk = u * nchunks_per_shard + chunk_starts[u, i]
 
         children = list(test_G.successors(group.my_rank))
+        if skip_leaf_tb:
+            children_leaf_nodes = {child: test_G.out_degree(child) == 0 for child in children}
+        else:
+            children_leaf_nodes = None
 
         # reduce node
         tb_id = nblocks
         nblocks += 1
         (recv_sm_channels[tb_id], send_sm_channels[tb_id],
             recv_proxy_channels[tb_id], send_proxy_channels[tb_id],
-            recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id], _) = \
+            recv_sm_scratches[tb_id], recv_proxy_scratches[tb_id], leaf_nodes[tb_id]) = \
             make_channels(group=group, proxy_service=proxy_service, connections=connections,
                             connection_types=connection_types, recv_peers=children,
                             send_peers=list(test_G.predecessors(group.my_rank)),
                             data=data, scratch_size=scratch_size,
-                            leaf_nodes=None)
+                            leaf_nodes=children_leaf_nodes)
         assert len(send_sm_channels[tb_id]) + len(send_proxy_channels[tb_id]) <= 1
         assert len(recv_sm_channels[tb_id]) <= 1 and len(recv_proxy_channels[tb_id]) <= 1
         node_types[tb_id] = -1
@@ -1672,7 +1699,8 @@ def reduce_scatter_kernel_hack(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.C
             data=data, data_chunk_offsets=data_chunk_offsets, data_chunk_sizes=data_chunk_sizes,
             total_chunks=total_chunks, scratch_size=scratch_size,
             recv_sm_scratches=recv_sm_scratches, recv_proxy_scratches=recv_proxy_scratches,
-            ntrees=nblocks, n_parallel_sm_blocks=n_parallel_sm_blocks)
+            ntrees=nblocks, n_parallel_sm_blocks=n_parallel_sm_blocks,
+            leaf_nodes=leaf_nodes if skip_leaf_tb else None, skip_leaf_tb=skip_leaf_tb)
     kernel = ReduceScatterParallelSMHackPipelineKernel(**args)
 
     return kernel

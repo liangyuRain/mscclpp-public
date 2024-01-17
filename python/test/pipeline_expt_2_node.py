@@ -178,6 +178,7 @@ if __name__ == "__main__":
                                    warmup_iters=warmup_iters,
                                    iters=bench_iters,
                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=True,
                                    hack=True)
             except ThreadBlockLimitException as e:
                 # Exception may not be triggered at all ranks.
