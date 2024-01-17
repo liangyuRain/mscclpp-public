@@ -177,7 +177,8 @@ if __name__ == "__main__":
                                    check_iters=check_iters,
                                    warmup_iters=warmup_iters,
                                    iters=bench_iters,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=True)
             except ThreadBlockLimitException as e:
                 # Exception may not be triggered at all ranks.
                 # Different ranks may requre different num of threadblocks depending on parameters.

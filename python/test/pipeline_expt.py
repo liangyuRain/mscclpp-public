@@ -51,12 +51,18 @@ def run_expt(group: mscclpp_comm.CommGroup, func,
              init_data: cp.array, data: cp.array,
              length: int, nelem_per_send: int,
              correctness_check,
-             check_iters: int, warmup_iters: int, iters: int):
+             check_iters: int, warmup_iters: int, iters: int,
+             skip_leaf_tb: bool = False):
     group.barrier()
     for _ in range(check_iters):
         cp.copyto(data[:length], init_data)
+        if skip_leaf_tb:
+            cp.cuda.runtime.deviceSynchronize()
+            group.barrier()
         func()
         cp.cuda.runtime.deviceSynchronize()
+        if skip_leaf_tb:
+            group.barrier()
         assert correctness_check()
 
     cp.cuda.runtime.deviceSynchronize()
@@ -262,7 +268,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        connections: dict, connection_types: dict,
                        data_lengths: list, send_lengths: list, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
-                       use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 2):
+                       use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 2,
+                       skip_leaf_tb=False):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -276,7 +283,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
                                    use_reduceScatter_kernel=use_reduceScatter_kernel,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks)
+                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   skip_leaf_tb=skip_leaf_tb)
     
     if group.my_rank == 0:
         print("#" * 53 + " ReduceScatter " + "#" * 53)
@@ -284,6 +292,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         print(f"k={k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
+        print(f"skip_leaf_tb={skip_leaf_tb}")
         print(f"nblocks={kernel.nblocks}, n_parallel_sm_blocks={n_parallel_sm_blocks}")
         print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
@@ -312,7 +321,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         run_expt(group=group, func=func, init_data=init_data, data=data,
                  length=length, nelem_per_send=nelem_per_send,
                  correctness_check=correctness_check,
-                 check_iters=check_iters, warmup_iters=warmup_iters, iters=iters)
+                 check_iters=check_iters, warmup_iters=warmup_iters, iters=iters,
+                 skip_leaf_tb=skip_leaf_tb)
 
     proxy_service.stop_proxy()
 
@@ -371,7 +381,8 @@ if __name__ == "__main__":
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
                        use_reduceScatter_kernel=False,
-                       n_parallel_sm_blocks=8)
+                       n_parallel_sm_blocks=8,
+                       skip_leaf_tb=True)
 
     if group.my_rank == 0:
         print()
