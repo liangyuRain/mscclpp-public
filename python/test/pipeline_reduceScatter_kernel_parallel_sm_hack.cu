@@ -73,6 +73,9 @@ MSCCLPP_DEVICE_INLINE void
 
   int poll_loop_cnt = 0;
 
+  int ready_local_sm = (recv_sm ? 0 : nloops);
+  int ready_local_proxy = (recv_proxy ? 0 : nloops);
+
   int reduced_sm = (recv_sm ? 0 : nloops);
   int reduced_proxy = (recv_proxy ? 0 : nloops);
 
@@ -88,8 +91,8 @@ MSCCLPP_DEVICE_INLINE void
   __shared__ int sent;
   __shared__ int pending_sends;
   if (tid == 0) {
-    ready_sm = (recv_sm ? 0 : nloops);
-    ready_proxy = (recv_proxy ? 0 : nloops);
+    ready_sm = ready_local_sm;
+    ready_proxy = ready_local_proxy;
     sent = sent_local;
     pending_sends = 0;
   }
@@ -98,16 +101,20 @@ MSCCLPP_DEVICE_INLINE void
   while (reduced_sm < nloops || reduced_proxy < nloops || sent_local < nloops) {
     if (reduced_sm < nloops || reduced_proxy < nloops) {
       // assert recv_sm or recv_proxy
-      int ready_local_sm = ready_sm, ready_local_proxy = ready_proxy;
-      if (ready_local_sm == reduced_sm || ready_local_proxy == reduced_proxy) {
+      if (recv_sm && ready_local_sm == reduced_sm) {
         if (tid == 0) {
-          if (recv_sm) ready_local_sm += recv_sm_channel->poll(nloops - ready_local_sm);
-          if (recv_proxy) ready_local_proxy += recv_proxy_channel->poll(nloops - ready_local_proxy);
+          ready_local_sm += recv_sm_channel->poll(nloops - ready_local_sm);
           ready_sm = ready_local_sm;
-          ready_proxy = ready_local_proxy;
         }
         __syncthreads();
         ready_local_sm = ready_sm;
+      }
+      if (recv_proxy && ready_local_proxy == reduced_proxy) {
+        if (tid == 0) {
+          ready_local_proxy += recv_proxy_channel->poll(nloops - ready_local_proxy);
+          ready_proxy = ready_local_proxy;
+        }
+        __syncthreads();
         ready_local_proxy = ready_proxy;
       }
       const int psends = pending_sends;
@@ -181,12 +188,13 @@ MSCCLPP_DEVICE_INLINE void
 
     if (send_proxy) {
       if (tid == 0) {
-        if (pending_sends == 0) {
+        const int psends = pending_sends;
+        if (psends == 0) {
           poll_loop_cnt = 0;
         } else {
           ++poll_loop_cnt;
           if (poll_loop_cnt == 10) {
-            pending_sends -= send_proxy_channel->poll(pending_sends);
+            pending_sends -= send_proxy_channel->poll(psends);
             poll_loop_cnt = 0;
           }
         }

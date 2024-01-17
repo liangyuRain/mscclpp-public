@@ -10,6 +10,7 @@ from pipeline_schedule import (
     allreduce_kernel,
     allgather_kernel,
     reduce_scatter_kernel,
+    reduce_scatter_kernel_hack,
     connect_nvlink,
 )
 from mscclpp_mpi import MpiGroup
@@ -269,22 +270,32 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        data_lengths: list, send_lengths: list, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
                        use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 2,
-                       skip_leaf_tb=False):
+                       skip_leaf_tb=False, hack=False):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
     max_length = max(math.ceil(length / alignment) * alignment for length in data_lengths)
     data = cp.empty(max_length, dtype=cp.int32)
-    kernel = reduce_scatter_kernel(Ts, Cs, k,
-                                   group=group,
-                                   connections=connections,
-                                   connection_types=connection_types,
-                                   data=data,
-                                   scratch_size=scratch_size,
-                                   proxy_service=proxy_service,
-                                   use_reduceScatter_kernel=use_reduceScatter_kernel,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
-                                   skip_leaf_tb=skip_leaf_tb)
+    if hack:
+        kernel = reduce_scatter_kernel_hack(Ts, Cs, k,
+                                            group=group,
+                                            connections=connections,
+                                            connection_types=connection_types,
+                                            data=data,
+                                            scratch_size=scratch_size,
+                                            proxy_service=proxy_service,
+                                            n_parallel_sm_blocks=n_parallel_sm_blocks)
+    else:
+        kernel = reduce_scatter_kernel(Ts, Cs, k,
+                                       group=group,
+                                       connections=connections,
+                                       connection_types=connection_types,
+                                       data=data,
+                                       scratch_size=scratch_size,
+                                       proxy_service=proxy_service,
+                                       use_reduceScatter_kernel=use_reduceScatter_kernel,
+                                       n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                       skip_leaf_tb=skip_leaf_tb)
     
     if group.my_rank == 0:
         print("#" * 53 + " ReduceScatter " + "#" * 53)
@@ -380,9 +391,8 @@ if __name__ == "__main__":
                        check_iters=check_iters,
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
-                       use_reduceScatter_kernel=False,
-                       n_parallel_sm_blocks=8,
-                       skip_leaf_tb=True)
+                       n_parallel_sm_blocks=6,
+                       hack=True)
 
     if group.my_rank == 0:
         print()

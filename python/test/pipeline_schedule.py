@@ -1051,7 +1051,7 @@ class ReduceScatterParallelSMHackPipelineKernel:
         recv_proxy_scratches: dict,
         ntrees: int,
         n_parallel_sm_blocks: int = 1,
-        nthreads=512,
+        nthreads=1024,
     ):
         n_peers = max([len(recv_sm_channels.get(t, [])) + len(recv_proxy_channels.get(t, [])) for t in range(ntrees)] +
                       [len(send_sm_channels.get(t, [])) + len(send_proxy_channels.get(t, [])) for t in range(ntrees)] + [1])
