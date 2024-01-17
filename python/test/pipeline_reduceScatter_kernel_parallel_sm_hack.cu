@@ -250,7 +250,7 @@ MSCCLPP_DEVICE_INLINE void
   __syncthreads();
 }
 
-__device__ mscclpp::DeviceSyncer deviceSyncer;
+// __device__ mscclpp::DeviceSyncer deviceSyncer;
 
 extern "C" __global__ void __launch_bounds__(1024)
     KERNEL(mscclpp::SmChannelDeviceHandle* recv_sm_channel_block, mscclpp::SmChannelDeviceHandle* send_sm_channel_block,
@@ -276,8 +276,9 @@ extern "C" __global__ void __launch_bounds__(1024)
   const uint64_t data_start = data_start_block[bid];
   const uint64_t nelem_total = nelem_total_block[bid];
 
-  if (sm_block_idx == 0 && sm_block_cnt > 1) new(sm_syncer) mscclpp::DeviceSyncer();
-  deviceSyncer.sync(gridDim.x);
+  // Assume sm_syncer has been initialized in python code by zeroing all bytes
+  // if (sm_block_idx == 0 && sm_block_cnt > 1) new(sm_syncer) mscclpp::DeviceSyncer();
+  // deviceSyncer.sync(gridDim.x);
 
   if (sm_block_idx == 0) {
     threadblockCall(recv_sm_channel, send_sm_channel, recv_proxy_channel, send_proxy_channel,

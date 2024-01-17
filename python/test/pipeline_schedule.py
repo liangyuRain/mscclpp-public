@@ -1185,7 +1185,7 @@ class ReduceScatterParallelSMHackPipelineKernel:
         sm_block_cnt_arr = cp.array(sm_block_cnt_arr, dtype=cp.int32)
 
         sm_syncer_num = sm_syncer_offset
-        sm_syncer_arr = cp.empty(sm_syncer_num * 12, dtype=cp.bool_)
+        sm_syncer_arr = cp.zeros(sm_syncer_num * 12, dtype=cp.bool_)
         sm_syncer_ptr_arr = [struct.pack("P", sm_syncer_arr.data.ptr + i * 12) if i is not None else struct.pack("P", 0) for i in sm_syncer_indics]
         sm_syncer_arr_mem = cp.asarray(memoryview(b"".join(sm_syncer_ptr_arr)), dtype=cp.uint8)
         skip_signal_arr = cp.array(skip_signal_arr, dtype=cp.bool_)
