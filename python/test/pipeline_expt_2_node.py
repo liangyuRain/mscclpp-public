@@ -187,7 +187,8 @@ if __name__ == "__main__":
                     # Different ranks may requre different num of threadblocks depending on parameters.
                     print(f"ThreadBlockLimitException: "
                         f"nblocks={e.nblocks}, ninstance={ninstance}, "
-                        f"n_parallel_sm_blocks={n_parallel_sm_blocks}")
+                        f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+                        f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}")
                 if group.my_rank == 0:
                     print()
 

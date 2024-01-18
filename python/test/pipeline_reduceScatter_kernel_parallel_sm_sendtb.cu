@@ -96,7 +96,7 @@ MSCCLPP_DEVICE_INLINE void
     int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
     int4* const scratch4 = reinterpret_cast<int4*>(&recv_scratch_arr[peer][s_start]);
 
-#ifdef NO_REDUCE
+#ifndef NO_REDUCE
     for (uint64_t offset = tid + reduce_block_idx * blockDim.x; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
       int4 tmp = data4[offset];
       int4 val = scratch4[offset];
@@ -181,7 +181,7 @@ MSCCLPP_DEVICE_INLINE void
           int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
           int4* const scratch4 = reinterpret_cast<int4*>(&recv_scratch_arr[i][s_start]);
 
-#ifdef NO_REDUCE
+#ifndef NO_REDUCE
           for (uint64_t offset = tid; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
             int4 tmp = data4[offset];
             int4 val = scratch4[offset];
