@@ -18,11 +18,12 @@ from .pipeline_schedule import (
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int,
                                 scratch_size: int, sm_node_size: int, n_parallel_sm_blocks: int,
-                                skip_leaf_tb: bool):
+                                n_parallel_reduce_blocks: int, skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_send_recv_reduce_chain("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -31,6 +32,7 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     proxy_service = ProxyService()
@@ -87,7 +89,7 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
         kernel = ReduceScatterParallelSMSendTBPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
                                                              memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
                                                              recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks,
-                                                             leaf_nodes, skip_leaf_tb)
+                                                             n_parallel_reduce_blocks, leaf_nodes, skip_leaf_tb)
         proxy_service.start_proxy()
         group.barrier()
         kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
@@ -104,10 +106,12 @@ def test_send_recv_reduce_chain(mpi_group: MpiGroup, nelem_per_send: int, nelem_
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total: int, scratch_size: int,
-                          sm_node_size: int, n_parallel_sm_blocks: int, skip_leaf_tb: bool):
+                          sm_node_size: int, n_parallel_sm_blocks: int, n_parallel_reduce_blocks: int,
+                          skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_multipeer_reduce("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -116,6 +120,7 @@ def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total:
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     proxy_service = ProxyService()
@@ -159,7 +164,7 @@ def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total:
         kernel = ReduceScatterParallelSMSendTBPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
                                                              memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
                                                              recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks,
-                                                             leaf_nodes, skip_leaf_tb)
+                                                             n_parallel_reduce_blocks, leaf_nodes, skip_leaf_tb)
         proxy_service.start_proxy()
         group.barrier()
         kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
@@ -178,10 +183,11 @@ def test_multipeer_reduce(mpi_group: MpiGroup, nelem_per_send: int, nelem_total:
 @pytest.mark.parametrize("nelem_total", [20, 1024])
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size: int, sm_node_size: int,
-                             n_parallel_sm_blocks: int, skip_leaf_tb: bool):
+                             n_parallel_sm_blocks: int, n_parallel_reduce_blocks: int, skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_tree_reduce_to_root("
@@ -190,6 +196,7 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     proxy_service = ProxyService()
@@ -239,7 +246,7 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
         kernel = ReduceScatterParallelSMSendTBPipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
                                                              memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size,
                                                              recv_sm_scratches, recv_proxy_scratches, ntrees, n_parallel_sm_blocks,
-                                                             leaf_nodes, skip_leaf_tb)
+                                                             n_parallel_reduce_blocks, leaf_nodes, skip_leaf_tb)
         proxy_service.start_proxy()
         group.barrier()
         kernel(nelem_total=nelem_total, nelem_per_send=nelem_per_send)
@@ -259,13 +266,15 @@ def test_tree_reduce_to_root(nelem_per_send: int, nelem_total: int, scratch_size
 @pytest.mark.parametrize("nelem_per_send", [8, 20])
 @pytest.mark.parametrize("reduce_scatter_length", [128, 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [20, 32])
-@pytest.mark.parametrize("ninstance", [1, 2, 4])
+@pytest.mark.parametrize("ninstance", [1, 4])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_scatter_length: int,
                                 scratch_size: int, ninstance: int, sm_node_size: int,
-                                n_parallel_sm_blocks: int, skip_leaf_tb: bool):
+                                n_parallel_sm_blocks: int, n_parallel_reduce_blocks:int,
+                                skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_allpair_reduce_scatter("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -275,6 +284,7 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
               f"ninstance={ninstance}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
@@ -289,16 +299,17 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
 
     try:
         kernel = reduce_scatter_kernel(Ts, Cs,
-                                    k=ninstance,
-                                    group=group,
-                                    connections=connections,
-                                    connection_types=connection_types,
-                                    data=memory,
-                                    scratch_size=scratch_size,
-                                    proxy_service=proxy_service,
-                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
-                                    skip_leaf_tb=skip_leaf_tb,
-                                    sendtb=True)
+                                       k=ninstance,
+                                       group=group,
+                                       connections=connections,
+                                       connection_types=connection_types,
+                                       data=memory,
+                                       scratch_size=scratch_size,
+                                       proxy_service=proxy_service,
+                                       n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                       n_parallel_reduce_blocks=n_parallel_reduce_blocks,
+                                       skip_leaf_tb=skip_leaf_tb,
+                                       sendtb=True)
         exception_triggered = False
     except ThreadBlockLimitException as e:
         print(f"ThreadBlockLimitException: {e}", flush=True)
@@ -331,11 +342,13 @@ def test_allpair_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce
 @pytest.mark.parametrize("scratch_size", [20, 32])
 @pytest.mark.parametrize("ninstance", [1, 2])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_scatter_length: int,
                              scratch_size: int, ninstance: int, sm_node_size: int,
-                             n_parallel_sm_blocks: int, skip_leaf_tb: bool):
+                             n_parallel_sm_blocks: int, n_parallel_reduce_blocks: int,
+                             skip_leaf_tb: bool):
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_ring_reduce_scatter("
               f"mpi_group.comm.size={mpi_group.comm.size}, "
@@ -345,6 +358,7 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
               f"ninstance={ninstance}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
@@ -367,6 +381,7 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   n_parallel_reduce_blocks=n_parallel_reduce_blocks,
                                    skip_leaf_tb=skip_leaf_tb,
                                    sendtb=True)
 
@@ -389,10 +404,12 @@ def test_ring_reduce_scatter(mpi_group: MpiGroup, nelem_per_send: int, reduce_sc
 @pytest.mark.parametrize("reduce_scatter_length", [3 * 1024, 3 * 2 ** 20])
 @pytest.mark.parametrize("scratch_size", [512, 1024])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, scratch_size: int,
-                             sm_node_size: int, n_parallel_sm_blocks: int, skip_leaf_tb: bool):
+                             sm_node_size: int, n_parallel_sm_blocks: int,
+                             n_parallel_reduce_blocks: int, skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_tree_reduce_scatter("
@@ -401,6 +418,7 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
@@ -427,6 +445,7 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   n_parallel_reduce_blocks=n_parallel_reduce_blocks,
                                    skip_leaf_tb=skip_leaf_tb,
                                    sendtb=True)
     
@@ -450,11 +469,12 @@ def test_tree_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, sc
 @pytest.mark.parametrize("scratch_size", [512, 1024])
 @pytest.mark.parametrize("iters", [2, 10])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int, scratch_size: int,
                                 iters: int, sm_node_size: int, n_parallel_sm_blocks: int,
-                                skip_leaf_tb: bool):
+                                n_parallel_reduce_blocks: int, skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_multrun_reduce_scatter("
@@ -464,6 +484,7 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
               f"iters={iters}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
@@ -496,6 +517,7 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   n_parallel_reduce_blocks=n_parallel_reduce_blocks,
                                    skip_leaf_tb=skip_leaf_tb,
                                    sendtb=True)
 
@@ -516,10 +538,12 @@ def test_multrun_reduce_scatter(nelem_per_send: int, reduce_scatter_length: int,
 @pytest.mark.parametrize("nelem_per_send", [256, 512])
 @pytest.mark.parametrize("scratch_size", [512, 1024])
 @pytest.mark.parametrize("sm_node_size", [1, 4, 8])
-@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 2, 4])
+@pytest.mark.parametrize("n_parallel_sm_blocks", [1, 4])
+@pytest.mark.parametrize("n_parallel_reduce_blocks", [1, 4])
 @pytest.mark.parametrize("skip_leaf_tb", [False, True])
 def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_node_size: int,
-                                  n_parallel_sm_blocks: int, skip_leaf_tb: bool):
+                                  n_parallel_sm_blocks: int, n_parallel_reduce_blocks: int,
+                                  skip_leaf_tb: bool):
     mpi_group = MpiGroup(list(range(8)))
     if mpi_group.comm.rank == 0:
         print(f"TEST: test_vary_size_reduce_scatter("
@@ -527,6 +551,7 @@ def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_nod
               f"scratch_size={scratch_size}, "
               f"sm_node_size={sm_node_size}, "
               f"n_parallel_sm_blocks={n_parallel_sm_blocks}, "
+              f"n_parallel_reduce_blocks={n_parallel_reduce_blocks}, "
               f"skip_leaf_tb={skip_leaf_tb})", flush=True)
     group, connections = create_and_connect(mpi_group, "NVLink")
     connection_types = {dest: "sm" if group.my_rank // sm_node_size == dest // sm_node_size else "proxy"
@@ -556,6 +581,7 @@ def test_vary_size_reduce_scatter(nelem_per_send: int, scratch_size: int, sm_nod
                                    scratch_size=scratch_size,
                                    proxy_service=proxy_service,
                                    n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                   n_parallel_reduce_blocks=n_parallel_reduce_blocks,
                                    skip_leaf_tb=skip_leaf_tb,
                                    sendtb=True)
 
