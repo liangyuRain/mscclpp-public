@@ -137,6 +137,7 @@ MSCCLPP_DEVICE_INLINE void
   } else {
     assert(nrecv_sm + nrecv_proxy > 1);
   }
+  if (send_sm_channel == nullptr && send_proxy_channel == nullptr) *((volatile int*) sent_progress) = nloops;
 
   for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) pending_receives_arr_local[i] = 0;
   if (tid == 0) sent = 0;
@@ -245,7 +246,7 @@ MSCCLPP_DEVICE_INLINE void
             hasSent = true;
           }
         }
-        if (hasSent && (nrecv_sm + nrecv_proxy > 0)) *((volatile int*) sent_progress) = sent_local;
+        if (hasSent && nrecv_sm > 0) *((volatile int*) sent_progress) = sent_local;
       }
       if (__syncthreads_or(hasSent)) sent_local = sent;
     }
@@ -301,6 +302,7 @@ MSCCLPP_DEVICE_INLINE void
         while (preceived == max_pending_sends) {
           preceived = *((volatile int*) pending_receives);
         }
+        // while (*((volatile int*) sent_progress) < loop) {}
       }
       while (ready == loop) ready += recv_sm_channel->poll(nloops - ready);
     }
