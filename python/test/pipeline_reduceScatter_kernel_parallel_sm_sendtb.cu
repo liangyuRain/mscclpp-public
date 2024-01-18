@@ -89,7 +89,11 @@ MSCCLPP_DEVICE_INLINE void
   int reduced[N_PEERS] = {};
   int sent_local = (send_sm_channel == nullptr && send_proxy_channel == nullptr ? nloops : 0);
   int min_reduced = (nrecv_sm + nrecv_proxy > 0 ? 0 : nloops);
-  assert(nrecv_proxy > 0 || send_sm_channel != nullptr || send_proxy_channel != nullptr);
+  if (nrecv_sm == 0) {
+    assert(nrecv_proxy > 0 || send_sm_channel != nullptr || send_proxy_channel != nullptr);
+  } else {
+    assert(nrecv_sm + nrecv_proxy > 1);
+  }
 
   for (int i = tid; i < nrecv_sm + nrecv_proxy; i += blockDim.x) pending_receives_arr_local[i] = 0;
   if (tid == 0) sent = 0;
@@ -368,6 +372,7 @@ extern "C" __global__ void __launch_bounds__(1024)
   } else if (threadblock_type == 0 && nrecv_peers > 1) {
     *((volatile int*) pending_receives) = 0;
   }
+  // if (sm_block_idx == 0) new(sm_syncer) mscclpp::DeviceSyncer();
   deviceSyncer.sync(gridDim.x);
 
   if (threadblock_type > 0) {
