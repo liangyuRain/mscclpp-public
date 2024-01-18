@@ -167,27 +167,29 @@ if __name__ == "__main__":
     # ReduceScatter
     for ninstance in [1, 2, 3, 4, 6, 8]:
         for n_parallel_sm_blocks in [1, 2, 3, 4, 6, 8]:
-            Tsp, Csp, kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
-            try:
-                run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
-                                   connection_types={dest: channel_type(dest) for dest in connections},
-                                   data_lengths=data_lengths,
-                                   send_lengths=send_lengths,
-                                   scratch_size=2 ** 24,
-                                   check_iters=check_iters,
-                                   warmup_iters=warmup_iters,
-                                   iters=bench_iters,
-                                   n_parallel_sm_blocks=n_parallel_sm_blocks,
-                                   skip_leaf_tb=True,
-                                   hack=True)
-            except ThreadBlockLimitException as e:
-                # Exception may not be triggered at all ranks.
-                # Different ranks may requre different num of threadblocks depending on parameters.
-                print(f"ThreadBlockLimitException: "
-                      f"nblocks={e.nblocks}, ninstance={ninstance}, "
-                      f"n_parallel_sm_blocks={n_parallel_sm_blocks}")
-            if group.my_rank == 0:
-                print()
+            for n_parallel_reduce_blocks in [1, 2, 4, 8, 16]:
+                Tsp, Csp, kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
+                try:
+                    run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
+                                       connection_types={dest: channel_type(dest) for dest in connections},
+                                       data_lengths=data_lengths,
+                                       send_lengths=send_lengths,
+                                       scratch_size=2 ** 24,
+                                       check_iters=check_iters,
+                                       warmup_iters=warmup_iters,
+                                       iters=bench_iters,
+                                       n_parallel_sm_blocks=n_parallel_sm_blocks,
+                                       n_parallel_reduce_blocks=n_parallel_reduce_blocks,
+                                       skip_leaf_tb=True,
+                                       sendtb=True)
+                except ThreadBlockLimitException as e:
+                    # Exception may not be triggered at all ranks.
+                    # Different ranks may requre different num of threadblocks depending on parameters.
+                    print(f"ThreadBlockLimitException: "
+                        f"nblocks={e.nblocks}, ninstance={ninstance}, "
+                        f"n_parallel_sm_blocks={n_parallel_sm_blocks}")
+                if group.my_rank == 0:
+                    print()
 
     # Allreduce
     for ninstance in [1, 2, 3, 4, 6, 8]:

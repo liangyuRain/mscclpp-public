@@ -270,12 +270,14 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        data_lengths: list, send_lengths: list, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
                        use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 2,
-                       skip_leaf_tb=False, hack=False):
+                       n_parallel_reduce_blocks: int = 2,
+                       skip_leaf_tb=False, hack=False, sendtb=False):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
     max_length = max(math.ceil(length / alignment) * alignment for length in data_lengths)
     data = cp.empty(max_length, dtype=cp.int32)
+    assert not (hack and sendtb)
     if hack:
         kernel = reduce_scatter_kernel_hack(Ts, Cs, k,
                                             group=group,
@@ -296,7 +298,9 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                        proxy_service=proxy_service,
                                        use_reduceScatter_kernel=use_reduceScatter_kernel,
                                        n_parallel_sm_blocks=n_parallel_sm_blocks,
-                                       skip_leaf_tb=skip_leaf_tb)
+                                       n_parallel_reduce_blocks=n_parallel_reduce_blocks,
+                                       skip_leaf_tb=skip_leaf_tb,
+                                       sendtb=sendtb)
     
     if group.my_rank == 0:
         print("#" * 53 + " ReduceScatter " + "#" * 53)
@@ -305,7 +309,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
         print(f"skip_leaf_tb={skip_leaf_tb}")
-        print(f"nblocks={kernel.nblocks}, n_parallel_sm_blocks={n_parallel_sm_blocks}")
+        print(f"nblocks={kernel.nblocks}, n_parallel_sm_blocks={n_parallel_sm_blocks}, n_parallel_reduce_blocks={n_parallel_reduce_blocks}")
         print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
         print()
@@ -375,26 +379,26 @@ if __name__ == "__main__":
     if group.my_rank == 0:
         print()
 
-    # ring
-    RS_k = 1
-    RS_Ts = {(u, i): [[((u + d) % group.nranks, (u + d + 1) % group.nranks)]
-                      for d in range(group.nranks - 1)]
+    # allpairs
+    RS_k = 4
+    RS_Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
              for u, i in itertools.product(range(group.nranks), range(RS_k))}
     RS_Cs = {(u, i): 1 for u, i in itertools.product(range(group.nranks), range(RS_k))}
-    connections = connect_nvlink(group, [(group.my_rank - 1) % group.nranks,
-                                         (group.my_rank + 1) % group.nranks])
+    connections = connect_nvlink(group, [v for v in range(group.nranks) 
+                                         if v != group.my_rank])
 
     run_reduce_scatter(RS_Ts, RS_Cs, RS_k, group=group, connections=connections, 
                        connection_types={dest: channel_type(dest) for dest in connections},
                        data_lengths=data_lengths,
                        send_lengths=[2 ** 18],
-                       scratch_size=2 ** 20,
+                       scratch_size=2 ** 24,
                        check_iters=check_iters,
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
-                       n_parallel_sm_blocks=6,
+                       n_parallel_sm_blocks=1,
+                       n_parallel_reduce_blocks=16,
                        skip_leaf_tb=True,
-                       hack=True)
+                       sendtb=True)
 
     if group.my_rank == 0:
         print()
