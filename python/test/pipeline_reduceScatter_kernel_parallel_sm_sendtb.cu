@@ -16,6 +16,8 @@
 #define FLUSH_INTERVAL 50
 #define MAX_NLOOPS 1048576
 
+// #define NO_REDUCE
+
 // END_DEFINES //
 
 
@@ -94,6 +96,7 @@ MSCCLPP_DEVICE_INLINE void
     int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
     int4* const scratch4 = reinterpret_cast<int4*>(&recv_scratch_arr[peer][s_start]);
 
+#ifdef NO_REDUCE
     for (uint64_t offset = tid + reduce_block_idx * blockDim.x; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
       int4 tmp = data4[offset];
       int4 val = scratch4[offset];
@@ -103,6 +106,7 @@ MSCCLPP_DEVICE_INLINE void
       tmp.w += val.w;
       data4[offset] = tmp;
     }
+#endif
 
     reduce_syncer->sync(reduce_block_cnt);
 
@@ -177,6 +181,7 @@ MSCCLPP_DEVICE_INLINE void
           int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
           int4* const scratch4 = reinterpret_cast<int4*>(&recv_scratch_arr[i][s_start]);
 
+#ifdef NO_REDUCE
           for (uint64_t offset = tid; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
             int4 tmp = data4[offset];
             int4 val = scratch4[offset];
@@ -195,6 +200,7 @@ MSCCLPP_DEVICE_INLINE void
             if (nLastElem > 2) tmp.z += val.z;
             data4[nElem4] = tmp;
           }
+#endif
 
           ++reduced[i];
           reduced_round[i] = true;
