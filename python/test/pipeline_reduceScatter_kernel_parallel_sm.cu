@@ -146,6 +146,7 @@ MSCCLPP_DEVICE_INLINE void
           // only recv sm channel with no rrcs use get
           // recv sm channel with rrcs will directly use read when reduce
           // proxy channel does not have get
+          // BUG: no check on if scratch is full!!!!
           const uint64_t s_start = (received % max_pending_sends) * nelem_per_send;
           const uint64_t d_start = data_start + received * nelem_per_send;
           const uint64_t size = min(nelem_per_send, data_start + nelem_total - d_start);
