@@ -142,6 +142,9 @@ Port 20000
 ```shell
 /usr/local/mpi/bin/mpirun -allow-run-as-root -np 16 --bind-to numa -hostfile /root/hosts.txt -x MSCCLPP_DEBUG=WARN -x LD_LIBRARY_PATH=/root/mscclpp-public/build:$LD_LIBRARY_PATH -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 -x NCCL_IB_PCI_RELAXED_ORDERING=1 -x NCCL_SOCKET_IFNAME=eth0 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_NET_GDR_LEVEL=5 -x NCCL_TOPO_FILE=/topo.xml -x NCCL_NET_PLUGIN=none -x NCCL_IB_DISABLE=0 -x NCCL_MIN_NCHANNELS=32 -x NCCL_DEBUG=WARN -x NCCL_P2P_DISABLE=0 -x NCCL_SHM_DISABLE=0 -x MSCCLPP_HOME=/root/mscclpp-public -np 16 -npernode 8 python3 /root/mscclpp-public/python/test/pipeline_expt_2_node.py
 ```
+```shell
+python ~/lock.py docker exec -it original-mscclpp /usr/local/mpi/bin/mpirun -allow-run-as-root -np 16 --bind-to numa -hostfile /root/hosts.txt -x MSCCLPP_DEBUG=WARN -x LD_LIBRARY_PATH=/root/mscclpp-public/build:$LD_LIBRARY_PATH -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 -x NCCL_IB_PCI_RELAXED_ORDERING=1 -x NCCL_SOCKET_IFNAME=eth0 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_NET_GDR_LEVEL=5 -x NCCL_TOPO_FILE=/topo.xml -x NCCL_NET_PLUGIN=none -x NCCL_IB_DISABLE=0 -x NCCL_MIN_NCHANNELS=32 -x NCCL_DEBUG=WARN -x NCCL_P2P_DISABLE=0 -x NCCL_SHM_DISABLE=0 -x MSCCLPP_HOME=/root/mscclpp-public -np 16 -npernode 8 python3 /root/mscclpp-public/python/test/pipeline_expt_2_node.py
+```
 
 
 # Notes
