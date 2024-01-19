@@ -31,7 +31,7 @@ REDUCE_SCATTER_PARALLEL_SM_KERNEL_HACK_FILE = "pipeline_reduceScatter_kernel_par
 REDUCE_SCATTER_PARALLEL_SM_KERNEL_SENDTB_FILE = "pipeline_reduceScatter_kernel_parallel_sm_sendtb.cu"
 
 MAX_NLOOPS = 1048576  # also defined in pipeline_reduceScatter_kernel.cu
-MAX_NBLOCKS = 110
+MAX_NBLOCKS = 109
 
 
 # Exception may not be triggered at all ranks.
