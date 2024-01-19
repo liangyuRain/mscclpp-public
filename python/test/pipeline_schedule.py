@@ -1088,7 +1088,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
 
         recv_scratch_arr_save = []
         received_arr_save = []
-        reduced_arr_save = []
+        reduce_arr_save = []
         reduce_or_get_save = []
 
         recv_sm_handles_arr = []
@@ -1106,7 +1106,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         reduce_block_idx_block = []
         reduce_block_cnt_block = []
         received_arr_block = []
-        reduced_arr_block = []
+        reduce_arr_block = []
         sm_block_idx_block = []
         sm_block_cnt_block = []
         sm_syncer_offset = 0
@@ -1134,18 +1134,27 @@ class ReduceScatterParallelSMCollREPipelineKernel:
             nrecv_proxy = len(recv_proxy_channels.get(tree, []))
             nrecv_peers = nrecv_sm + nrecv_proxy
             assert nrecv_peers <= n_peers
-            local_nblocks = nrecv_sm * n_parallel_sm_blocks
             assert len(send_sm_channels.get(tree, [])) + len(send_proxy_channels.get(tree, [])) <= 1
             send_sm = len(send_sm_channels.get(tree, [])) > 0
             send_proxy = len(send_proxy_channels.get(tree, [])) > 0
-            
+            assert nrecv_peers > 0 or send_sm or send_proxy
+
+            if nrecv_peers == 0 and not send_proxy and leaf_nodes is not None:
+                continue
+
+            n_parallel_blocks = n_parallel_sm_blocks if nrecv_peers > 0 else 1
+            local_nblocks = max(1, nrecv_sm) * n_parallel_blocks
             self.nblocks += local_nblocks
-            for i in range(nrecv_sm):
-                recv_sm_channel_indics += [len(recv_sm_handles_arr) + i] * n_parallel_sm_blocks
-                if leaf_nodes is not None:
-                    skip_signal_block += [leaf_nodes[tree][i]]  * n_parallel_sm_blocks
-                else:
-                    skip_signal_block += [False] * n_parallel_sm_blocks
+            if nrecv_sm > 0:
+                for i in range(nrecv_sm):
+                    recv_sm_channel_indics += [len(recv_sm_handles_arr) + i] * n_parallel_sm_blocks
+                    if leaf_nodes is not None:
+                        skip_signal_block += [leaf_nodes[tree][i]]  * n_parallel_sm_blocks
+                    else:
+                        skip_signal_block += [False] * n_parallel_sm_blocks
+            else:
+                recv_sm_channel_indics += [-1] * n_parallel_blocks
+                skip_signal_block += [False] * n_parallel_blocks
             send_sm_channel_indics += [len(send_sm_handles_arr) if send_sm else -1] + [-1] * (local_nblocks - 1)
             recv_proxy_channel_indics += [len(recv_proxy_handles_arr)] + [-1] * (local_nblocks - 1)
             send_proxy_channel_indics += [len(send_proxy_handles_arr) if send_proxy else -1] + [-1] * (local_nblocks - 1)
@@ -1170,29 +1179,34 @@ class ReduceScatterParallelSMCollREPipelineKernel:
             reduce_block_idx_block += list(range(local_nblocks))
             reduce_block_cnt_block += [local_nblocks] * local_nblocks
 
-            if nrecv_sm == 1:
-                assert local_nblocks == n_parallel_sm_blocks
+            if nrecv_peers <= 1:
                 received_arr_block += [struct.pack("P", 0)] * local_nblocks
-                reduced_arr_block += [struct.pack("P", 0)] * local_nblocks
             else:
                 received_arr = cp.zeros(nrecv_peers, dtype=cp.int32)
                 received_arr_block += [struct.pack("P", received_arr.data.ptr)] * local_nblocks
                 received_arr_save.append((received_arr))
 
-                reduced_arr = cp.zeros(nrecv_sm, dtype=cp.int32)
-                reduced_arr_block += [struct.pack("P", reduced_arr.data.ptr)] * local_nblocks
-                reduced_arr_save.append((reduced_arr))
+            if nrecv_sm <= 1:
+                reduce_arr_block += [struct.pack("P", 0)] * local_nblocks
+            else:
+                reduce_arr = cp.zeros(nrecv_sm, dtype=cp.int32)
+                reduce_arr_block += [struct.pack("P", reduce_arr.data.ptr)] * local_nblocks
+                reduce_arr_save.append((reduce_arr))
 
-            sm_block_idx_block += list(range(n_parallel_sm_blocks)) * nrecv_sm
-            sm_block_cnt_block += [n_parallel_sm_blocks] * local_nblocks
-            for i in range(nrecv_sm):
-                sm_syncer_indics += [sm_syncer_offset] * n_parallel_sm_blocks
-                sm_syncer_offset += 1
-
-            reduce_or_get = cp.empty(nrecv_sm, dtype=cp.int32)
-            reduce_or_get_save.append((reduce_or_get))
-            for i in range(nrecv_sm):
-                reduce_or_get_block += [struct.pack("P", reduce_or_get.data.ptr + i * 4)] * n_parallel_sm_blocks
+            sm_block_idx_block += list(range(n_parallel_blocks)) * max(1, nrecv_sm)
+            sm_block_cnt_block += [n_parallel_sm_blocks if nrecv_peers > 0 else 1] * local_nblocks
+            if nrecv_peers > 0:
+                for i in range(max(1, nrecv_sm)):
+                    sm_syncer_indics += [sm_syncer_offset] * n_parallel_sm_blocks
+                    sm_syncer_offset += 1
+                reduce_or_get = cp.empty(max(1, nrecv_sm), dtype=cp.int32)
+                reduce_or_get_save.append(reduce_or_get)
+                for i in range(max(1, nrecv_sm)):
+                    reduce_or_get_block += [struct.pack("P", reduce_or_get.data.ptr + i * 4)] * n_parallel_sm_blocks
+            else:
+                assert n_parallel_blocks == 1
+                sm_syncer_indics += [None]
+                reduce_or_get_block += [struct.pack("P", 0)]
 
             self.data_chunk_offsets += [data_chunk_offsets[tree]] * local_nblocks
             self.data_chunk_sizes += [data_chunk_sizes[tree]] * local_nblocks
@@ -1208,7 +1222,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         send_proxy_handles_mem = cp.asarray(memoryview(b"".join(send_proxy_handles_arr)), dtype=cp.uint8)
         recv_scratch_arr_mem = cp.asarray(memoryview(b"".join(recv_scratch_arr_block)), dtype=cp.uint8)
         received_arr_mem = cp.asarray(memoryview(b"".join(received_arr_block)), dtype=cp.uint8)
-        reduced_arr_mem = cp.asarray(memoryview(b"".join(reduced_arr_block)), dtype=cp.uint8)
+        reduce_arr_mem = cp.asarray(memoryview(b"".join(reduce_arr_block)), dtype=cp.uint8)
         reduce_or_get_mem = cp.asarray(memoryview(b"".join(reduce_or_get_block)), dtype=cp.uint8)
         assert len(recv_sm_handles_arr) > 0 or recv_sm_handles_mem.data.ptr == 0
         assert len(send_sm_handles_arr) > 0 or send_sm_handles_mem.data.ptr == 0
@@ -1216,7 +1230,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         assert len(send_proxy_handles_arr) > 0 or send_proxy_handles_mem.data.ptr == 0
         assert len(recv_scratch_arr_block) > 0 or recv_scratch_arr_mem.data.ptr == 0
         assert len(received_arr_block) > 0 or received_arr_mem.data.ptr == 0
-        assert len(reduced_arr_block) > 0 or reduced_arr_mem.data.ptr == 0
+        assert len(reduce_arr_block) > 0 or reduce_arr_mem.data.ptr == 0
         assert len(reduce_or_get_block) > 0 or reduce_or_get_mem.data.ptr == 0
         recv_sm_channel_indics = cp.array(recv_sm_channel_indics, dtype=cp.int32)
         send_sm_channel_indics = cp.array(send_sm_channel_indics, dtype=cp.int32)
@@ -1232,7 +1246,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         sm_block_cnt_block = cp.array(sm_block_cnt_block, dtype=cp.int32)
 
         sm_syncer_num = sm_syncer_offset
-        sm_syncer_arr = cp.empty(sm_syncer_num * 12, dtype=cp.bool_)
+        sm_syncer_arr = cp.zeros(sm_syncer_num * 12, dtype=cp.bool_)
         sm_syncer_ptr_arr = [struct.pack("P", sm_syncer_arr.data.ptr + i * 12) if i is not None else struct.pack("P", 0) for i in sm_syncer_indics]
         sm_syncer_arr_mem = cp.asarray(memoryview(b"".join(sm_syncer_ptr_arr)), dtype=cp.uint8)
         skip_signal_block = cp.array(skip_signal_block, dtype=cp.bool_)
@@ -1255,7 +1269,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         assert reduce_block_idx_block.shape[0] == self.nblocks
         assert reduce_block_cnt_block.shape[0] == self.nblocks
         assert len(received_arr_block) == self.nblocks
-        assert len(reduced_arr_block) == self.nblocks
+        assert len(reduce_arr_block) == self.nblocks
         assert sm_block_idx_block.shape[0] == self.nblocks
         assert sm_block_cnt_block.shape[0] == self.nblocks
         assert len(sm_syncer_ptr_arr) == self.nblocks
@@ -1274,7 +1288,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         self.params += struct.pack("P", nrecv_peers_block.data.ptr)
         self.params += struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
         self.params += struct.pack("P", reduce_block_idx_block.data.ptr) + struct.pack("P", reduce_block_cnt_block.data.ptr)
-        self.params += struct.pack("P", received_arr_mem.data.ptr) + struct.pack("P", reduced_arr_mem.data.ptr)
+        self.params += struct.pack("P", received_arr_mem.data.ptr) + struct.pack("P", reduce_arr_mem.data.ptr)
         self.params += struct.pack("P", sm_block_idx_block.data.ptr) + struct.pack("P", sm_block_cnt_block.data.ptr)
         self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr) + struct.pack("P", reduce_or_get_mem.data.ptr)
         self.params += struct.pack("P", skip_signal_block.data.ptr)
@@ -1288,11 +1302,11 @@ class ReduceScatterParallelSMCollREPipelineKernel:
                       data, recv_sm_scratches, recv_proxy_scratches,
                       recv_sm_channel_indics, send_sm_channel_indics,
                       recv_proxy_channel_indics, send_proxy_channel_indics,
-                      recv_scratch_arr_save, received_arr_save, reduced_arr_save, reduce_or_get_save,
-                      recv_scratch_arr_mem, received_arr_mem, reduced_arr_mem, reduce_or_get_mem,
+                      recv_scratch_arr_save, received_arr_save, reduce_arr_save, reduce_or_get_save,
+                      recv_scratch_arr_mem, received_arr_mem, reduce_arr_mem, reduce_or_get_mem,
                       nrecv_sm_block, nrecv_proxy_block, nrecv_peers_block,
                       reduce_block_idx_block, reduce_block_cnt_block,
-                      received_arr_block, reduced_arr_block,
+                      received_arr_block, reduce_arr_block,
                       sm_block_idx_block, sm_block_cnt_block,
                       sm_syncer_arr, sm_syncer_ptr_arr, sm_syncer_arr_mem,
                       reduce_or_get_block, skip_signal_block]
