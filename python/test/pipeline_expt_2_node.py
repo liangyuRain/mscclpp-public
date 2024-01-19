@@ -5,9 +5,11 @@ import pickle
 import copy
 from mpi4py import MPI
 import os
+import math
 
 import mscclpp.comm as mscclpp_comm
 from pipeline_schedule import (
+    MAX_NBLOCKS,
     PipelineKernel,
     ThreadBlockLimitException,
 )
@@ -137,7 +139,13 @@ if __name__ == "__main__":
 
     # Allgather
     for ninstance in [1, 2, 3, 4, 6, 8]:
-        for n_parallel_sm_blocks in [1, 2, 3, 4, 6, 8]:
+        assert AG_tree_name == f"symmetric/sym_split2_IB20_NV300_bw_k_{AG_k}_320"
+        max_sm_blocks = math.floor((MAX_NBLOCKS / (ninstance * AG_k) - 2) / 14)
+        if max_sm_blocks <= 0:
+            break
+        nsm = [1, 2, 3, 4, 6, 8]
+        nsm = [v for v in nsm if v < max_sm_blocks] + [max_sm_blocks]
+        for n_parallel_sm_blocks in nsm:
             Tsp, Csp, kp = multi_instance(AG_Ts, AG_Cs, AG_k, ninstance)
             try:
                 run_allgather(Tsp, Csp, kp, group=group, connections=connections, 
@@ -158,7 +166,7 @@ if __name__ == "__main__":
                 print()
     
     RS_k = 1
-    RS_tree_name = f"symmetric/sym_split_IB20_NV300_bw_k_{RS_k}_320"
+    RS_tree_name = f"symmetric/sym_split2_IB20_NV300_bw_k_{RS_k}_320"
     if group.my_rank == 0:
         print(f"RS_tree_file={RS_tree_name}")
     with open(f"/root/mscclpp-public/trees/{RS_tree_name}.pkl", "rb") as f:
@@ -166,8 +174,19 @@ if __name__ == "__main__":
 
     # ReduceScatter
     for ninstance in [1, 2, 3, 4, 6, 8]:
-        for n_parallel_sm_blocks in [1, 2, 3, 4, 6, 8]:
-            for n_parallel_reduce_blocks in [1, 2, 4, 8, 16]:
+        assert RS_tree_name == f"symmetric/sym_split2_IB20_NV300_bw_k_{RS_k}_320"
+        max_sm_blocks = math.floor((MAX_NBLOCKS / (ninstance * RS_k) - 2) / 14)
+        if max_sm_blocks <= 0:
+            break
+        nsm = [1, 2, 3, 4, 6, 8]
+        nsm = [v for v in nsm if v < max_sm_blocks] + [max_sm_blocks]
+        for n_parallel_sm_blocks in nsm:
+            max_reduce_blocks = math.floor((MAX_NBLOCKS / (ninstance * RS_k) - n_parallel_sm_blocks * 14) / 2)
+            if max_reduce_blocks <= 0:
+                break
+            nreduce = [1, 2, 4, 8, 16, 32]
+            nreduce = [v for v in nreduce if v < max_reduce_blocks] + [max_reduce_blocks]
+            for n_parallel_reduce_blocks in nreduce:
                 Tsp, Csp, kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
                 try:
                     run_reduce_scatter(Tsp, Csp, kp, group=group, connections=connections, 
