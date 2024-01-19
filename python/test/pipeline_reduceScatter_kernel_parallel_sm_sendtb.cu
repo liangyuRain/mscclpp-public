@@ -263,6 +263,7 @@ MSCCLPP_DEVICE_INLINE void
       while (pending_sends > 0) pending_sends -= send_proxy_channel->poll(pending_sends);
       send_proxy_channel->flush();
     }
+    if (nrecv_sm > 0) *((volatile int*) sent_progress) = 0;
   }
   for (int i = tid; i < nrecv_proxy; i += blockDim.x) recv_proxy_channels[i].flush();
 }
@@ -404,71 +405,55 @@ extern "C" __global__ void __launch_bounds__(1024)
            int** reduce_peer_block, int* reduce_block_idx_block, const int* reduce_block_cnt_block, mscclpp::DeviceSyncer** reduce_syncer_block,
            const uint64_t* data_start_block, const uint64_t nelem_per_send, const uint64_t* nelem_total_block, const uint64_t debug_flag) {
   const int bid = blockIdx.x;
-  mscclpp::SmChannelDeviceHandle* recv_sm_channel = (recv_sm_channel_indics[bid] < 0 ? nullptr : &recv_sm_channel_block[recv_sm_channel_indics[bid]]);
-  mscclpp::SmChannelDeviceHandle* send_sm_channel = (send_sm_channel_indics[bid] < 0 ? nullptr : &send_sm_channel_block[send_sm_channel_indics[bid]]);
-  mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channel = (recv_proxy_channel_indics[bid] < 0 ? nullptr : &recv_proxy_channel_block[recv_proxy_channel_indics[bid]]);
-  mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel = (send_proxy_channel_indics[bid] < 0 ? nullptr : &send_proxy_channel_block[send_proxy_channel_indics[bid]]);
   int threadblock_type = threadblock_type_block[bid];
-  int** recv_scratch_arr = recv_scratch_arr_block[bid];
-  int* recv_scratch = recv_scratch_block[bid];
-  int* pending_receives_arr = pending_receives_arr_block[bid];
-  int* pending_receives = pending_receives_block[bid];
-  int nrecv_peers = nrecv_peers_block[bid];
-  int nrecv_sm = nrecv_sm_block[bid];
-  int nrecv_proxy = nrecv_proxy_block[bid];
-  int* sent_progress = sent_progress_block[bid];
-  const int sm_block_idx = sm_block_idx_block[bid];
-  const int sm_block_cnt = sm_block_cnt_block[bid];
-  mscclpp::DeviceSyncer* sm_syncer = sm_syncer_block[bid];
-  const bool skip_signal = skip_signal_block[bid];
-  int* reduce_peer = reduce_peer_block[bid];
-  const int reduce_block_idx = reduce_block_idx_block[bid];
-  const int reduce_block_cnt = reduce_block_cnt_block[bid];
-  mscclpp::DeviceSyncer* reduce_syncer = reduce_syncer_block[bid];
   const uint64_t data_start = data_start_block[bid];
   const uint64_t nelem_total = nelem_total_block[bid];
   
   assert(threadblock_type != 0);
-  if (threadblock_type > 0 && nrecv_sm > 0 && reduce_block_idx == 0) {
-    *((volatile int*) sent_progress) = 0;
-
-  } else if (threadblock_type == 0 && nrecv_peers > 1 && sm_block_idx == 0) {
-    *((volatile int*) pending_receives) = 0;
-  }
-  // if (sm_block_idx == 0) new(sm_syncer) mscclpp::DeviceSyncer();
-  // if (reduce_block_idx == 0) new(reduce_syncer) mscclpp::DeviceSyncer();
-  deviceSyncer.sync(gridDim.x);
 
   if (threadblock_type > 0) {
-    assert(recv_sm_channel == nullptr);
-    assert(recv_scratch == nullptr);
-    assert(pending_receives == nullptr);
-    assert(nrecv_peers == nrecv_sm + nrecv_proxy);
-    assert(sm_block_idx < 0);
-    assert(sm_block_cnt == 0);
-    assert(sm_syncer == nullptr);
-    assert(!skip_signal);
+    int** recv_scratch_arr = recv_scratch_arr_block[bid];
+    int* reduce_peer = reduce_peer_block[bid];
+    const int reduce_block_idx = reduce_block_idx_block[bid];
+    const int reduce_block_cnt = reduce_block_cnt_block[bid];
+    mscclpp::DeviceSyncer* reduce_syncer = reduce_syncer_block[bid];
+    
     if (reduce_block_idx == 0) {
+      mscclpp::SmChannelDeviceHandle* send_sm_channel = (send_sm_channel_indics[bid] < 0 ? nullptr : &send_sm_channel_block[send_sm_channel_indics[bid]]);
+      mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel = (send_proxy_channel_indics[bid] < 0 ? nullptr : &send_proxy_channel_block[send_proxy_channel_indics[bid]]);
+      mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channel = (recv_proxy_channel_indics[bid] < 0 ? nullptr : &recv_proxy_channel_block[recv_proxy_channel_indics[bid]]);
+      int nrecv_proxy = nrecv_proxy_block[bid];
+      int* pending_receives_arr = pending_receives_arr_block[bid];
+      int nrecv_sm = nrecv_sm_block[bid];
+      int* sent_progress = sent_progress_block[bid];
+
       sendtb_threadblockCall(send_sm_channel, send_proxy_channel, recv_proxy_channel, nrecv_proxy,
                              recv_scratch_arr, scratch_size, data,
                              pending_receives_arr, nrecv_sm, sent_progress,
                              reduce_peer, reduce_block_cnt, reduce_syncer,
                              data_start, nelem_per_send, nelem_total, debug_flag);
     } else {
+      int nrecv_peers = nrecv_peers_block[bid];
+
       parallel_reduce_threadblockCall(recv_scratch_arr, scratch_size, data, reduce_peer, nrecv_peers,
                                       reduce_block_idx, reduce_block_cnt, reduce_syncer,
                                       data_start, nelem_per_send, nelem_total, debug_flag);
     }
   } else {
-    assert(recv_proxy_channel == nullptr);
-    assert(recv_scratch_arr == nullptr);
-    assert(pending_receives_arr == nullptr);
-    assert(nrecv_peers == nrecv_sm + nrecv_proxy);
-    assert(reduce_peer == nullptr);
-    assert(reduce_block_idx < 0);
-    assert(reduce_block_cnt == 0);
+    mscclpp::SmChannelDeviceHandle* recv_sm_channel = (recv_sm_channel_indics[bid] < 0 ? nullptr : &recv_sm_channel_block[recv_sm_channel_indics[bid]]);
+    int* recv_scratch = recv_scratch_block[bid];
+    int nrecv_peers = nrecv_peers_block[bid];
+    const int sm_block_idx = sm_block_idx_block[bid];
+    const int sm_block_cnt = sm_block_cnt_block[bid];
+    mscclpp::DeviceSyncer* sm_syncer = sm_syncer_block[bid];
+    
     if (sm_block_idx == 0) {
-      assert(sm_block_idx == 0);
+      mscclpp::SmChannelDeviceHandle* send_sm_channel = (send_sm_channel_indics[bid] < 0 ? nullptr : &send_sm_channel_block[send_sm_channel_indics[bid]]);
+      mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel = (send_proxy_channel_indics[bid] < 0 ? nullptr : &send_proxy_channel_block[send_proxy_channel_indics[bid]]);
+      int* pending_receives = pending_receives_block[bid];
+      int* sent_progress = sent_progress_block[bid];
+      const bool skip_signal = skip_signal_block[bid];
+
       threadblockCall(recv_sm_channel, send_sm_channel, send_proxy_channel,
                       recv_scratch, scratch_size, data,
                       pending_receives, nrecv_peers, sent_progress,
