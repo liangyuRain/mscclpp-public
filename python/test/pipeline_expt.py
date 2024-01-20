@@ -269,8 +269,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        connections: dict, connection_types: dict,
                        data_lengths: list, send_lengths: list, scratch_size: int,
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
-                       use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 2,
-                       n_parallel_reduce_blocks: int = 2,
+                       use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 1,
+                       n_parallel_reduce_blocks: int = None, coll_re: bool = False,
                        skip_leaf_tb=False, hack=False, sendtb=False):
     proxy_service = ProxyService()
 
@@ -300,6 +300,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                        n_parallel_sm_blocks=n_parallel_sm_blocks,
                                        n_parallel_reduce_blocks=n_parallel_reduce_blocks,
                                        skip_leaf_tb=skip_leaf_tb,
+                                       coll_re=coll_re,
                                        sendtb=sendtb)
     
     if group.my_rank == 0:
@@ -380,7 +381,7 @@ if __name__ == "__main__":
         print()
 
     # allpairs
-    RS_k = 4
+    RS_k = 1
     RS_Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
              for u, i in itertools.product(range(group.nranks), range(RS_k))}
     RS_Cs = {(u, i): 1 for u, i in itertools.product(range(group.nranks), range(RS_k))}
@@ -395,10 +396,9 @@ if __name__ == "__main__":
                        check_iters=check_iters,
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
-                       n_parallel_sm_blocks=1,
-                       n_parallel_reduce_blocks=16,
-                       skip_leaf_tb=True,
-                       sendtb=True)
+                       n_parallel_sm_blocks=4,
+                       coll_re=True,
+                       skip_leaf_tb=True)
 
     if group.my_rank == 0:
         print()
