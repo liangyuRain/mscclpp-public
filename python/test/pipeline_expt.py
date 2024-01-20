@@ -285,7 +285,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                        check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
                        use_reduceScatter_kernel=False, n_parallel_sm_blocks: int = 1,
                        n_parallel_reduce_blocks: int = None, coll_re: bool = False,
-                       skip_leaf_tb=False, hack=False, sendtb=False):
+                       skip_leaf_tb: bool = False, hack: bool = False, sendtb: bool= False,
+                       n_pipeline: int = None):
     proxy_service = ProxyService()
 
     alignment = 4 * k * group.nranks
@@ -315,7 +316,8 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
                                        n_parallel_reduce_blocks=n_parallel_reduce_blocks,
                                        skip_leaf_tb=skip_leaf_tb,
                                        coll_re=coll_re,
-                                       sendtb=sendtb)
+                                       sendtb=sendtb,
+                                       n_pipeline=n_pipeline)
     
     if group.my_rank == 0:
         print("#" * 53 + " ReduceScatter " + "#" * 53)
@@ -323,7 +325,7 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
         print(f"k={k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
-        print(f"skip_leaf_tb={skip_leaf_tb}")
+        print(f"skip_leaf_tb={skip_leaf_tb}, n_pipeline={n_pipeline}")
         print(f"nblocks={kernel.nblocks}, n_parallel_sm_blocks={n_parallel_sm_blocks}, n_parallel_reduce_blocks={n_parallel_reduce_blocks}")
         print(f"KERNEL={kernel.kernel_file}::{kernel.kernel_name}")
         print(f"BENCH_METHOD={BENCH_METHOD}")
@@ -413,7 +415,8 @@ if __name__ == "__main__":
                        n_parallel_sm_blocks=4,
                        n_parallel_reduce_blocks=4,
                        coll_re=True,
-                       skip_leaf_tb=True)
+                       skip_leaf_tb=True,
+                       n_pipeline=2)
 
     if group.my_rank == 0:
         print()
