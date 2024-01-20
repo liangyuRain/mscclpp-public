@@ -235,29 +235,29 @@ if __name__ == "__main__":
 
     # Allreduce
     mscclpp_path = "/root/mscclpp-public"
-    with open(f"{mscclpp_path}/run_configs/reduceScatter_best_config_coll_re.pkl") as f:
+    with open(f"{mscclpp_path}/run_configs/reduceScatter_best_config_coll_re.pkl", "rb") as f:
         reduceScatter_configs_coll_re = pickle.load(f)
-    with open(f"{mscclpp_path}/run_configs/reduceScatter_best_config_sendtb.pkl") as f:
+    with open(f"{mscclpp_path}/run_configs/reduceScatter_best_config_sendtb.pkl", "rb") as f:
         reduceScatter_configs_sendtb = pickle.load(f)
-    with open(f"{mscclpp_path}/allgather_best_config.pkl") as f:
+    with open(f"{mscclpp_path}/run_configs/allgather_best_config.pkl", "rb") as f:
         allgather_configs = pickle.load(f)
 
     for length in data_lengths:
-        rs_config = reduceScatter_configs_coll_re[length]
+        rs_config = reduceScatter_configs_coll_re[length * 4]
         coll_re = True
         sendtb = False
         
-        # rs_config = reduceScatter_configs_sendtb[length]
+        # rs_config = reduceScatter_configs_sendtb[length * 4]
         # coll_re = False
         # sendtb = True
         
-        ag_config = allgather_configs[length]
+        ag_config = allgather_configs[length * 4]
 
         RS_Tsp, RS_Csp, RS_kp = multi_instance(RS_Ts, RS_Cs, RS_k, rs_config['k'])
         AG_Tsp, AG_Csp, AG_kp = multi_instance(AG_Ts, AG_Cs, AG_k, ag_config['k'])
 
-        rs_send_size = rs_config['send_size']
-        ag_send_size = ag_config['send_size']
+        rs_send_size = rs_config['send_size'] // 4
+        ag_send_size = ag_config['send_size'] // 4
 
         rs_n_parallel_sm_blocks = rs_config['n_parallel_sm_blocks']
         ag_n_parallel_sm_blocks = ag_config['n_parallel_sm_blocks']
@@ -265,13 +265,14 @@ if __name__ == "__main__":
         rs_n_parallel_reduce_blocks = rs_config['n_parallel_reduce_blocks'] if 'n_parallel_reduce_blocks' in rs_config else None
         assert sendtb == (rs_n_parallel_reduce_blocks is not None)
 
+        scratch_size = 2 ** 24
         run_fusion_allreduce(RS_Tsp, RS_Csp, RS_kp, AG_Tsp, AG_Csp, AG_kp,
                              group=group, connections=connections, 
                              connection_types={dest: channel_type(dest) for dest in connections},
-                             data_lengths=data_lengths,
-                             rs_send_lengths={l: [rs_send_size // 2, rs_send_size, rs_send_size * 2] for l in data_lengths},
-                             ag_send_lengths={l: [ag_send_size // 2, ag_send_size, ag_send_size * 2] for l in data_lengths},
-                             scratch_size=2 ** 24,
+                             data_lengths=list(filter(lambda x: x <= length * 2, data_lengths)),
+                             rs_send_lengths={l: list(filter(lambda x: x <= scratch_size, [rs_send_size // 2, rs_send_size, rs_send_size * 2])) for l in data_lengths},
+                             ag_send_lengths={l: list(filter(lambda x: x <= scratch_size, [ag_send_size // 2, ag_send_size, ag_send_size * 2])) for l in data_lengths},
+                             scratch_size=scratch_size,
                              check_iters=check_iters,
                              warmup_iters=warmup_iters,
                              iters=bench_iters,
