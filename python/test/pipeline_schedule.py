@@ -1105,6 +1105,8 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         nrecv_peers_block = []
         reduce_block_idx_block = []
         reduce_block_cnt_block = []
+        reduce_syncer_offset = 0
+        reduce_syncer_indics = []
         received_arr_block = []
         reduce_arr_block = []
         sm_block_idx_block = []
@@ -1178,6 +1180,8 @@ class ReduceScatterParallelSMCollREPipelineKernel:
 
             reduce_block_idx_block += list(range(local_nblocks))
             reduce_block_cnt_block += [local_nblocks] * local_nblocks
+            reduce_syncer_indics += [reduce_syncer_offset] * local_nblocks
+            reduce_syncer_offset += 1
 
             if nrecv_peers <= 1:
                 received_arr_block += [struct.pack("P", 0)] * local_nblocks
@@ -1239,8 +1243,14 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         nrecv_sm_block = cp.array(nrecv_sm_block, dtype=cp.int32)
         nrecv_proxy_block = cp.array(nrecv_proxy_block, dtype=cp.int32)
         nrecv_peers_block = cp.array(nrecv_peers_block, dtype=cp.int32)
+        
         reduce_block_idx_block = cp.array(reduce_block_idx_block, dtype=cp.int32)
         reduce_block_cnt_block = cp.array(reduce_block_cnt_block, dtype=cp.int32)
+
+        reduce_syncer_num = reduce_syncer_offset
+        reduce_syncer_arr = cp.zeros(reduce_syncer_num * 12, dtype=cp.bool_)
+        reduce_syncer_ptr_arr = [struct.pack("P", reduce_syncer_arr.data.ptr + i * 12) if i is not None else struct.pack("P", 0) for i in reduce_syncer_indics]
+        reduce_syncer_arr_mem = cp.asarray(memoryview(b"".join(reduce_syncer_ptr_arr)), dtype=cp.uint8)
         
         sm_block_idx_block = cp.array(sm_block_idx_block, dtype=cp.int32)
         sm_block_cnt_block = cp.array(sm_block_cnt_block, dtype=cp.int32)
@@ -1268,6 +1278,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         assert nrecv_peers_block.shape[0] == self.nblocks
         assert reduce_block_idx_block.shape[0] == self.nblocks
         assert reduce_block_cnt_block.shape[0] == self.nblocks
+        assert len(reduce_syncer_ptr_arr) == self.nblocks
         assert len(received_arr_block) == self.nblocks
         assert len(reduce_arr_block) == self.nblocks
         assert sm_block_idx_block.shape[0] == self.nblocks
@@ -1288,6 +1299,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         self.params += struct.pack("P", nrecv_peers_block.data.ptr)
         self.params += struct.pack("Q", scratch_size) + struct.pack("P", data.data.ptr)
         self.params += struct.pack("P", reduce_block_idx_block.data.ptr) + struct.pack("P", reduce_block_cnt_block.data.ptr)
+        self.params += struct.pack("P", reduce_syncer_arr_mem.data.ptr)
         self.params += struct.pack("P", received_arr_mem.data.ptr) + struct.pack("P", reduce_arr_mem.data.ptr)
         self.params += struct.pack("P", sm_block_idx_block.data.ptr) + struct.pack("P", sm_block_cnt_block.data.ptr)
         self.params += struct.pack("P", sm_syncer_arr_mem.data.ptr) + struct.pack("P", reduce_or_get_mem.data.ptr)
@@ -1306,6 +1318,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
                       recv_scratch_arr_mem, received_arr_mem, reduce_arr_mem, reduce_or_get_mem,
                       nrecv_sm_block, nrecv_proxy_block, nrecv_peers_block,
                       reduce_block_idx_block, reduce_block_cnt_block,
+                      reduce_syncer_arr, reduce_syncer_ptr_arr, reduce_syncer_arr_mem,
                       received_arr_block, reduce_arr_block,
                       sm_block_idx_block, sm_block_cnt_block,
                       sm_syncer_arr, sm_syncer_ptr_arr, sm_syncer_arr_mem,
