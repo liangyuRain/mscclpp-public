@@ -6,6 +6,7 @@ import copy
 from mpi4py import MPI
 import os
 import math
+import pickle
 
 import mscclpp.comm as mscclpp_comm
 from pipeline_schedule import (

@@ -80,7 +80,12 @@ def run_expt(group: mscclpp_comm.CommGroup, func,
         raise ValueError(f"Unknown BENCH_METHOD: {BENCH_METHOD}")
 
     size = length * 4
-    send_size = nelem_per_send * 4
+    if type(nelem_per_send) is tuple:
+        send_size = ','.join(str(size * 4) for size in nelem_per_send)
+    elif type(nelem_per_send) is int:
+        send_size = nelem_per_send * 4
+    else:
+        assert False, type(nelem_per_send)
     if group.my_rank == 0:
         print_row(size, send_size,
                   f"{avg_time * 1e6:.2f}",
@@ -144,9 +149,11 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
                          allgather_Ts: dict, allgather_Cs: dict, allgather_k: int,
                          group: mscclpp_comm.CommGroup,
                          connections: dict, connection_types: dict,
-                         data_lengths: list, send_lengths: list, scratch_size: int,
-                         check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
-                         use_reduceScatter_kernel=False, rs_n_parallel_sm_blocks: int = 2,
+                         data_lengths: list, rs_send_lengths: dict, ag_send_lengths: dict, 
+                         scratch_size: int, check_iters: int = 10, warmup_iters: int = 10, iters: int = 10,
+                         use_reduceScatter_kernel: bool = False, rs_n_parallel_sm_blocks: int = 1,
+                         rs_n_parallel_reduce_blocks: int = None, skip_leaf_tb: bool = True,
+                         coll_re: bool = False, sendtb: bool = False,
                          ag_n_parallel_sm_blocks: int = 1):
     proxy_service = ProxyService()
 
@@ -162,7 +169,11 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
                                       scratch_size=scratch_size,
                                       proxy_service=proxy_service,
                                       use_reduceScatter_kernel=use_reduceScatter_kernel,
-                                      n_parallel_sm_blocks=rs_n_parallel_sm_blocks)
+                                      n_parallel_sm_blocks=rs_n_parallel_sm_blocks,
+                                      n_parallel_reduce_blocks=rs_n_parallel_reduce_blocks,
+                                      skip_leaf_tb=skip_leaf_tb,
+                                      coll_re=coll_re,
+                                      sendtb=sendtb)
     AG_kernel = allgather_kernel(allgather_Ts, allgather_Cs, allgather_k,
                                  group=group,
                                  connections=connections,
@@ -177,7 +188,8 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
         print(f"RS_k={reduce_scatter_k}, AG_k={allgather_k}, scratch_size={scratch_size}")
         print(f"check_iters={check_iters}, warmup_iters={warmup_iters}, iters={iters}")
         print(f"use_reduceScatter_kernel={use_reduceScatter_kernel}")
-        print(f"rs_nblocks={RS_kernel.nblocks}, rs_n_parallel_sm_blocks={rs_n_parallel_sm_blocks}")
+        print(f"skip_leaf_tb={skip_leaf_tb}")
+        print(f"rs_nblocks={RS_kernel.nblocks}, rs_n_parallel_sm_blocks={rs_n_parallel_sm_blocks}, rs_n_parallel_reduce_blocks={rs_n_parallel_reduce_blocks}")
         print(f"ag_nblocks={AG_kernel.nblocks}, ag_n_parallel_sm_blocks={ag_n_parallel_sm_blocks}")
         print(f"RS_KERNEL={RS_kernel.kernel_file}::{RS_kernel.kernel_name}")
         print(f"AG_KERNEL={AG_kernel.kernel_file}::{AG_kernel.kernel_name}")
@@ -187,28 +199,30 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
 
     proxy_service.start_proxy()
 
-    for length, nelem_per_send in itertools.product(data_lengths, send_lengths):
-        if length % alignment != 0:
-            length = math.ceil(length / alignment) * alignment
+    for length in data_lengths:
+        for rs_nelem_per_send, ag_nelem_per_send in itertools.product(rs_send_lengths[length], ag_send_lengths[length]):
+            if length % alignment != 0:
+                length = math.ceil(length / alignment) * alignment
 
-        if check_iters > 0:
-            init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
-            expected = cp.array([sum(n + 1 for n in range(group.nranks))] * length, dtype=cp.int32)
-            correctness_check = lambda: cp.array_equal(data[:length], expected)
-        else:
-            init_data, correctness_check = None, None
+            if check_iters > 0:
+                init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
+                expected = cp.array([sum(n + 1 for n in range(group.nranks))] * length, dtype=cp.int32)
+                correctness_check = lambda: cp.array_equal(data[:length], expected)
+            else:
+                init_data, correctness_check = None, None
 
-        RS_func = RS_kernel.get_func(nelem_total=length, nelem_per_send=nelem_per_send)
-        AG_func = AG_kernel.get_func(nelem_total=length, nelem_per_send=nelem_per_send)
+            RS_func = RS_kernel.get_func(nelem_total=length, nelem_per_send=rs_nelem_per_send)
+            AG_func = AG_kernel.get_func(nelem_total=length, nelem_per_send=ag_nelem_per_send)
 
-        def func(stream_ptr=None):
-            RS_func(stream_ptr)
-            AG_func(stream_ptr)
+            def func(stream_ptr=None):
+                RS_func(stream_ptr)
+                AG_func(stream_ptr)
 
-        run_expt(group=group, func=func, init_data=init_data, data=data,
-                 length=length, nelem_per_send=nelem_per_send,
-                 correctness_check=correctness_check,
-                 check_iters=check_iters, warmup_iters=warmup_iters, iters=iters)
+            run_expt(group=group, func=func, init_data=init_data, data=data,
+                    length=length, nelem_per_send=(rs_nelem_per_send, ag_nelem_per_send),
+                    correctness_check=correctness_check,
+                    check_iters=check_iters, warmup_iters=warmup_iters, iters=iters,
+                    skip_leaf_tb=skip_leaf_tb)
 
     proxy_service.stop_proxy()
 
@@ -430,12 +444,15 @@ if __name__ == "__main__":
                          group=group, connections=connections, 
                          connection_types={dest: channel_type(dest) for dest in connections},
                          data_lengths=data_lengths,
-                         send_lengths=[2 ** 18],
+                         rs_send_lengths={l: [2 ** 18] for l in data_lengths},
+                         ag_send_lengths={l: [2 ** 19] for l in data_lengths},
                          scratch_size=2 ** 20,
                          check_iters=check_iters,
                          warmup_iters=warmup_iters,
-                         use_reduceScatter_kernel=False,
-                         rs_n_parallel_sm_blocks=8,
+                         iters=bench_iters,
+                         coll_re=True,
+                         skip_leaf_tb=True,
+                         rs_n_parallel_sm_blocks=4,
                          ag_n_parallel_sm_blocks=1)
 
     del group
