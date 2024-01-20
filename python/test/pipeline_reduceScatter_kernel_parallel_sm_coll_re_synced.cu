@@ -92,6 +92,41 @@ MSCCLPP_DEVICE_INLINE void
   }
 }
 
+MSCCLPP_DEVICE_INLINE void
+    parallel_reduce_threadblockCall(int** recv_scratch_arr, const uint64_t scratch_size, int* data, const int nrecv_peers,
+                                    const int reduce_block_idx, const int reduce_block_cnt, mscclpp::DeviceSyncer* reduce_syncer,
+                                    const uint64_t data_start, const uint64_t nelem_per_send, const uint64_t nelem_total, const uint64_t debug_flag) {
+  const int tid = threadIdx.x;
+  const int nloops = (nelem_total + nelem_per_send - 1) / nelem_per_send; // ceiling division
+  const int max_pending_sends = scratch_size / nelem_per_send;
+  
+  for (int loop = 0; loop < nloops; ++loop) {
+    const uint64_t s_start = (loop % max_pending_sends) * nelem_per_send;
+    const uint64_t d_start = data_start + loop * nelem_per_send;
+    const uint64_t nElem = min(nelem_per_send, data_start + nelem_total - d_start);
+    const uint64_t nElem4 = nElem / 4;
+    int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
+
+    reduce_syncer->sync(reduce_block_cnt);
+
+#ifndef NO_REDUCE
+    for (uint64_t offset = tid + reduce_block_idx * blockDim.x; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
+      int4 tmp = data4[offset];
+      for (int i = 0; i < nrecv_peers; ++i) {
+        int4 val = reinterpret_cast<int4*>(&recv_scratch_arr[i][s_start])[offset];
+        tmp.x += val.x;
+        tmp.y += val.y;
+        tmp.z += val.z;
+        tmp.w += val.w;
+      }
+      data4[offset] = tmp;
+    }
+#endif
+
+    reduce_syncer->sync(reduce_block_cnt);
+  }
+}
+
 // test_vary_size_reduce_scatter not passed!!!
 MSCCLPP_DEVICE_INLINE void
     threadblockCall(mscclpp::SmChannelDeviceHandle* recv_sm_channel, mscclpp::SmChannelDeviceHandle* send_sm_channel,
@@ -125,7 +160,7 @@ MSCCLPP_DEVICE_INLINE void
     assert(nrecv_peers > 0 || send_sm_channel != nullptr || send_proxy_channel != nullptr);
     if (nrecv_peers > 0) {
       assert(reduce_block_idx % sm_block_cnt == 0);
-      assert(reduce_block_cnt == max(1, nrecv_sm) * sm_block_cnt);
+      assert(reduce_block_cnt >= max(1, nrecv_sm) * sm_block_cnt);
     } else {
       assert(reduce_block_cnt == 1);
       assert(sm_block_cnt == 1);
@@ -285,11 +320,15 @@ extern "C" __global__ void __launch_bounds__(1024)
                     reduce_block_idx, reduce_block_cnt, reduce_syncer,
                     sm_block_cnt, sm_syncer, skip_signal,
                     data_start, nelem_per_send, nelem_total, debug_flag);
-  } else {
+  } else if (sm_block_idx > 0) {
     parallel_sm_threadblockCall(recv_sm_channel, recv_scratch_arr,
                                 scratch_size, data, nrecv_peers,
                                 reduce_block_idx, reduce_block_cnt, reduce_syncer,
                                 sm_block_idx, sm_block_cnt, sm_syncer,
                                 data_start, nelem_per_send, nelem_total, debug_flag);
+  } else {
+    parallel_reduce_threadblockCall(recv_scratch_arr, scratch_size, data, nrecv_peers,
+                                    reduce_block_idx, reduce_block_cnt, reduce_syncer,
+                                    data_start, nelem_per_send, nelem_total, debug_flag);
   }
 }

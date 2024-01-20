@@ -1056,6 +1056,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         recv_proxy_scratches: dict,
         ntrees: int,
         n_parallel_sm_blocks: int = 1,
+        n_parallel_reduce_blocks: int = None,
         leaf_nodes: dict = None,
         skip_leaf_tb: bool = False,
         nthreads=1024,
@@ -1072,6 +1073,8 @@ class ReduceScatterParallelSMCollREPipelineKernel:
         file_dir = os.path.dirname(os.path.abspath(__file__))
         self.kernel_file = REDUCE_SCATTER_PARALLEL_SM_KERNEL_COLL_RE_FILE
         assert "parallel_sm" in self.kernel_file
+        if n_parallel_reduce_blocks is not None and n_parallel_reduce_blocks > 0:
+            assert "synced" in self.kernel_file
         self.kernel_name = "pipeline_reduceScatter_coll_re_schedule"
         self._kernel = KernelBuilder(
             file=self.kernel_file,
@@ -1147,17 +1150,21 @@ class ReduceScatterParallelSMCollREPipelineKernel:
 
             n_parallel_blocks = n_parallel_sm_blocks if nrecv_peers > 0 else 1
             local_nblocks = max(1, nrecv_sm) * n_parallel_blocks
+            n_reduce_blocks = 0 if nrecv_peers == 0 or (nrecv_peers == nrecv_sm == 1) else n_parallel_reduce_blocks
+            local_nblocks += n_reduce_blocks
             self.nblocks += local_nblocks
             if nrecv_sm > 0:
                 for i in range(nrecv_sm):
                     recv_sm_channel_indics += [len(recv_sm_handles_arr) + i] * n_parallel_sm_blocks
                     if leaf_nodes is not None:
-                        skip_signal_block += [leaf_nodes[tree][i]]  * n_parallel_sm_blocks
+                        skip_signal_block += [leaf_nodes[tree][i]] * n_parallel_sm_blocks
                     else:
                         skip_signal_block += [False] * n_parallel_sm_blocks
+                recv_sm_channel_indics += [-1] * n_reduce_blocks
+                skip_signal_block += [False] * n_reduce_blocks
             else:
-                recv_sm_channel_indics += [-1] * n_parallel_blocks
-                skip_signal_block += [False] * n_parallel_blocks
+                recv_sm_channel_indics += [-1] * local_nblocks
+                skip_signal_block += [False] * local_nblocks
             send_sm_channel_indics += [len(send_sm_handles_arr) if send_sm else -1] + [-1] * (local_nblocks - 1)
             recv_proxy_channel_indics += [len(recv_proxy_handles_arr) if nrecv_proxy > 0 else -1] + [-1] * (local_nblocks - 1)
             send_proxy_channel_indics += [len(send_proxy_handles_arr) if send_proxy else -1] + [-1] * (local_nblocks - 1)
@@ -1198,16 +1205,18 @@ class ReduceScatterParallelSMCollREPipelineKernel:
                 reduce_arr_block += [struct.pack("P", reduce_arr.data.ptr)] * local_nblocks
                 reduce_arr_save.append((reduce_arr))
 
-            sm_block_idx_block += list(range(n_parallel_blocks)) * max(1, nrecv_sm)
-            sm_block_cnt_block += [n_parallel_sm_blocks if nrecv_peers > 0 else 1] * local_nblocks
+            sm_block_idx_block += list(range(n_parallel_blocks)) * max(1, nrecv_sm) + [-1] * n_reduce_blocks
+            sm_block_cnt_block += [n_parallel_sm_blocks if nrecv_peers > 0 else 1] * (local_nblocks - n_reduce_blocks) + [0] * n_reduce_blocks
             if nrecv_peers > 0:
                 for i in range(max(1, nrecv_sm)):
                     sm_syncer_indics += [sm_syncer_offset] * n_parallel_sm_blocks
                     sm_syncer_offset += 1
+                sm_syncer_indics += [None] * n_reduce_blocks
                 reduce_or_get = cp.empty(max(1, nrecv_sm), dtype=cp.int32)
                 reduce_or_get_save.append(reduce_or_get)
                 for i in range(max(1, nrecv_sm)):
                     reduce_or_get_block += [struct.pack("P", reduce_or_get.data.ptr + i * 4)] * n_parallel_sm_blocks
+                reduce_or_get_block += [struct.pack("P", 0)] * n_reduce_blocks
             else:
                 assert n_parallel_blocks == 1
                 sm_syncer_indics += [None]
@@ -2348,7 +2357,7 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
         kernel = ReduceScatterParallelSMSendTBPipelineKernel(**args)
     elif n_parallel_sm_blocks is not None:
         assert n_parallel_sm_blocks is not None
-        assert n_parallel_reduce_blocks is None
+        assert n_parallel_reduce_blocks is None or coll_re
         for tree in range(nblocks):
             if len(recv_sm_channels[tree]) == 0:
                 assert len(recv_sm_scratches[tree]) == 0
@@ -2364,6 +2373,7 @@ def reduce_scatter_kernel(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGr
                 ntrees=nblocks, n_parallel_sm_blocks=n_parallel_sm_blocks,
                 leaf_nodes=leaf_nodes if skip_leaf_tb else None, skip_leaf_tb=skip_leaf_tb)
         if coll_re:
+            args["n_parallel_reduce_blocks"] = n_parallel_reduce_blocks
             kernel = ReduceScatterParallelSMCollREPipelineKernel(**args)
         else:
             kernel = ReduceScatterParallelSMPipelineKernel(**args)

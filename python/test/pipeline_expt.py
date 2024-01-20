@@ -411,6 +411,7 @@ if __name__ == "__main__":
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
                        n_parallel_sm_blocks=4,
+                       n_parallel_reduce_blocks=4,
                        coll_re=True,
                        skip_leaf_tb=True)
 
