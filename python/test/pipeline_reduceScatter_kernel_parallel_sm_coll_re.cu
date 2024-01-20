@@ -16,6 +16,8 @@
 #define FLUSH_INTERVAL 50
 #define MAX_NLOOPS 1048576
 
+// #define NO_REDUCE
+
 // END_DEFINES //
 
 
@@ -32,7 +34,7 @@ MSCCLPP_DEVICE_INLINE void
   const int nloops = (nelem_total + nelem_per_send - 1) / nelem_per_send; // ceiling division
   const int max_pending_sends = scratch_size / nelem_per_send;
 
-  if (nrecv_sm == 1) {
+  if (nrecv_peers == 1) {
     for (int loop = 0; loop < nloops; ++loop) {
       const uint64_t d_start = data_start + loop * nelem_per_send;
       const uint64_t d_start4 = d_start / 4;
@@ -73,6 +75,7 @@ MSCCLPP_DEVICE_INLINE void
         const uint64_t nElem4 = nElem / 4;
         int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
 
+#ifndef NO_REDUCE
         for (uint64_t offset = tid + reduce_block_idx * blockDim.x; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
           int4 tmp = data4[offset];
           for (int i = 0; i < nrecv_peers; ++i) {
@@ -84,6 +87,7 @@ MSCCLPP_DEVICE_INLINE void
           }
           data4[offset] = tmp;
         }
+#endif
 
         ++reduced;
       }
@@ -257,6 +261,8 @@ MSCCLPP_DEVICE_INLINE void
         const uint64_t nElem4 = nElem / 4;
         const uint64_t nLastElem = nElem % 4;
         int4* const data4 = reinterpret_cast<int4*>(&data[d_start]);
+
+#ifndef NO_REDUCE
         for (uint64_t offset = tid + reduce_block_idx * blockDim.x; offset < nElem4; offset += reduce_block_cnt * blockDim.x) {
           int4 tmp = data4[offset];
           for (int i = 0; i < nrecv_peers; ++i) {
@@ -279,6 +285,7 @@ MSCCLPP_DEVICE_INLINE void
           }
           data4[nElem4] = tmp;
         }
+#endif
 
         ++reduced;
         sm_syncer->sync(sm_block_cnt);
@@ -370,27 +377,27 @@ extern "C" __global__ void __launch_bounds__(1024)
            const uint64_t* data_start_block, const uint64_t nelem_per_send, const uint64_t* nelem_total_block, const uint64_t debug_flag) {
   const int bid = blockIdx.x;
   mscclpp::SmChannelDeviceHandle* recv_sm_channel = (recv_sm_channel_indics[bid] < 0 ? nullptr : &recv_sm_channel_block[recv_sm_channel_indics[bid]]);
-  mscclpp::SmChannelDeviceHandle* send_sm_channel = (send_sm_channel_indics[bid] < 0 ? nullptr : &send_sm_channel_block[send_sm_channel_indics[bid]]);
-  mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channels = (recv_proxy_channels_indics[bid] < 0 ? nullptr : &recv_proxy_channels_block[recv_proxy_channels_indics[bid]]);
-  mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel = (send_proxy_channel_indics[bid] < 0 ? nullptr : &send_proxy_channel_block[send_proxy_channel_indics[bid]]);
   int** recv_scratch_arr = recv_scratch_arr_block[bid];
   const int nrecv_sm = nrecv_sm_block[bid];
-  const int nrecv_proxy = nrecv_proxy_block[bid];
   const int nrecv_peers = nrecv_peers_block[bid];
   const int reduce_block_idx = reduce_block_idx_block[bid];
   const int reduce_block_cnt = reduce_block_cnt_block[bid];
   mscclpp::DeviceSyncer* reduce_syncer = reduce_syncer_block[bid];
   int* received = received_arr[bid];
-  int* reduced = reduced_arr[bid];
   const int sm_block_idx = sm_block_idx_block[bid];
   const int sm_block_cnt = sm_block_cnt_block[bid];
   mscclpp::DeviceSyncer* sm_syncer = sm_syncer_block[bid];
   int* reduce_or_get = reduce_or_get_block[bid];
-  const bool skip_signal = skip_signal_block[bid];
   const uint64_t data_start = data_start_block[bid];
   const uint64_t nelem_total = nelem_total_block[bid];
 
   if (sm_block_idx == 0) {
+    mscclpp::SmChannelDeviceHandle* send_sm_channel = (send_sm_channel_indics[bid] < 0 ? nullptr : &send_sm_channel_block[send_sm_channel_indics[bid]]);
+    mscclpp::SimpleProxyChannelDeviceHandle* recv_proxy_channels = (recv_proxy_channels_indics[bid] < 0 ? nullptr : &recv_proxy_channels_block[recv_proxy_channels_indics[bid]]);
+    mscclpp::SimpleProxyChannelDeviceHandle* send_proxy_channel = (send_proxy_channel_indics[bid] < 0 ? nullptr : &send_proxy_channel_block[send_proxy_channel_indics[bid]]);
+    const int nrecv_proxy = nrecv_proxy_block[bid];
+    int* reduced = reduced_arr[bid];
+    const bool skip_signal = skip_signal_block[bid];
     threadblockCall(recv_sm_channel, send_sm_channel, recv_proxy_channels, send_proxy_channel,
                     recv_scratch_arr, nrecv_sm, nrecv_proxy, nrecv_peers,
                     scratch_size, data,

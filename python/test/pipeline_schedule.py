@@ -1158,7 +1158,7 @@ class ReduceScatterParallelSMCollREPipelineKernel:
                 recv_sm_channel_indics += [-1] * n_parallel_blocks
                 skip_signal_block += [False] * n_parallel_blocks
             send_sm_channel_indics += [len(send_sm_handles_arr) if send_sm else -1] + [-1] * (local_nblocks - 1)
-            recv_proxy_channel_indics += [len(recv_proxy_handles_arr)] + [-1] * (local_nblocks - 1)
+            recv_proxy_channel_indics += [len(recv_proxy_handles_arr) if nrecv_proxy > 0 else -1] + [-1] * (local_nblocks - 1)
             send_proxy_channel_indics += [len(send_proxy_handles_arr) if send_proxy else -1] + [-1] * (local_nblocks - 1)
 
             recv_sm_handles_arr += [ch.device_handle().raw for ch in recv_sm_channels.get(tree, [])]
