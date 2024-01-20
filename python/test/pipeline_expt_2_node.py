@@ -234,18 +234,53 @@ if __name__ == "__main__":
                 print()
 
     # Allreduce
-    for ninstance in [1, 2, 3, 4, 6, 8]:
-        RS_Tsp, RS_Csp, RS_kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
-        AG_Tsp, AG_Csp, AG_kp = multi_instance(AG_Ts, AG_Cs, AG_k, ninstance)
+    mscclpp_path = "/root/mscclpp-public"
+    with open(f"{mscclpp_path}/run_configs/reduceScatter_best_config_coll_re.pkl") as f:
+        reduceScatter_configs_coll_re = pickle.load(f)
+    with open(f"{mscclpp_path}/run_configs/reduceScatter_best_config_sendtb.pkl") as f:
+        reduceScatter_configs_sendtb = pickle.load(f)
+    with open(f"{mscclpp_path}/allgather_best_config.pkl") as f:
+        allgather_configs = pickle.load(f)
+
+    for length in data_lengths:
+        rs_config = reduceScatter_configs_coll_re[length]
+        coll_re = True
+        sendtb = False
+        
+        # rs_config = reduceScatter_configs_sendtb[length]
+        # coll_re = False
+        # sendtb = True
+        
+        ag_config = allgather_configs[length]
+
+        RS_Tsp, RS_Csp, RS_kp = multi_instance(RS_Ts, RS_Cs, RS_k, rs_config['k'])
+        AG_Tsp, AG_Csp, AG_kp = multi_instance(AG_Ts, AG_Cs, AG_k, ag_config['k'])
+
+        rs_send_size = rs_config['send_size']
+        ag_send_size = ag_config['send_size']
+
+        rs_n_parallel_sm_blocks = rs_config['n_parallel_sm_blocks']
+        ag_n_parallel_sm_blocks = ag_config['n_parallel_sm_blocks']
+
+        rs_n_parallel_reduce_blocks = rs_config['n_parallel_reduce_blocks'] if 'n_parallel_reduce_blocks' in rs_config else None
+        assert sendtb == (rs_n_parallel_reduce_blocks is not None)
+
         run_fusion_allreduce(RS_Tsp, RS_Csp, RS_kp, AG_Tsp, AG_Csp, AG_kp,
                              group=group, connections=connections, 
                              connection_types={dest: channel_type(dest) for dest in connections},
                              data_lengths=data_lengths,
-                             send_lengths=send_lengths,
+                             rs_send_lengths={l: [rs_send_size // 2, rs_send_size, rs_send_size * 2] for l in data_lengths},
+                             ag_send_lengths={l: [ag_send_size // 2, ag_send_size, ag_send_size * 2] for l in data_lengths},
                              scratch_size=2 ** 24,
                              check_iters=check_iters,
                              warmup_iters=warmup_iters,
-                             iters=bench_iters)
+                             iters=bench_iters,
+                             coll_re=coll_re,
+                             sendtb=sendtb,
+                             skip_leaf_tb=True,
+                             rs_n_parallel_sm_blocks=rs_n_parallel_sm_blocks,
+                             rs_n_parallel_reduce_blocks=rs_n_parallel_reduce_blocks,
+                             ag_n_parallel_sm_blocks=ag_n_parallel_sm_blocks)
         if group.my_rank == 0:
             print()
 
