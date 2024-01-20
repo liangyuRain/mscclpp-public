@@ -26,7 +26,8 @@ ALLGATHER_PARALLEL_SM_KERNEL_FILE = "pipeline_allgather_kernel_parallel_sm.cu"
 
 REDUCE_SCATTER_PARALLEL_SM_KERNEL_FILE = "pipeline_reduceScatter_kernel_parallel_sm.cu"
 
-REDUCE_SCATTER_PARALLEL_SM_KERNEL_COLL_RE_FILE = "pipeline_reduceScatter_kernel_parallel_sm_coll_re.cu"
+# REDUCE_SCATTER_PARALLEL_SM_KERNEL_COLL_RE_FILE = "pipeline_reduceScatter_kernel_parallel_sm_coll_re.cu"
+REDUCE_SCATTER_PARALLEL_SM_KERNEL_COLL_RE_FILE = "pipeline_reduceScatter_kernel_parallel_sm_coll_re_synced.cu"
 
 REDUCE_SCATTER_PARALLEL_SM_KERNEL_HACK_FILE = "pipeline_reduceScatter_kernel_parallel_sm_hack.cu"
 
