@@ -4,7 +4,9 @@ if __name__ == "__main__":
     folder = "/home/azureuser/liangyu/mscclpp-public/taccl_msccl_xml"
     assert os.path.exists(folder)
     assert os.path.exists(os.path.join(folder, "taccl_results"))
-    for fname in os.listdir(folder):
+    file_list = sorted(os.listdir(folder))
+    for idx, fname in enumerate(file_list):
+        print(f"\nrunning {idx} / {len(file_list)}\n", flush=True)
         if not fname.endswith(".xml"):
             continue
         xml_file = os.path.join(folder, fname)
@@ -26,7 +28,7 @@ f"""mpirun \
 -x NCCL_ALGO=MSCCL,TREE,RING \
 -x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml \
 -x MSCCL_XML_FILES={xml_file} \
-/home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 10 -c 0 -a 2"""
+/home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 100 -c 0 -a 2"""
         )
         res_file = os.path.join(folder, "taccl_results", fname + ".txt")
         os.system(f"stdbuf --output=L {cmd} 2>&1 | tee {res_file}")
