@@ -24,7 +24,7 @@ f"""mpirun \
 -x NCCL_DEBUG_SUBSYS=INIT \
 -x NCCL_PXN_DISABLE=1 \
 -x NCCL_ALGO=MSCCL,TREE,RING \
--x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml
+-x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml \
 -x MSCCL_XML_FILES={xml_file} \
 /home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 10 -c 1 -a 2"""
         )
