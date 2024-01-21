@@ -3,7 +3,7 @@ import os
 if __name__ == "__main__":
     folder = "/home/azureuser/liangyu/mscclpp-public/taccl_msccl_xml"
     assert os.path.exists(folder)
-    assert os.path.exists(os.join(folder, "taccl_results"))
+    assert os.path.exists(os.path.join(folder, "taccl_results"))
     for fname in os.listdir(folder):
         if not fname.endswith(".xml"):
             continue
