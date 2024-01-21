@@ -1,0 +1,235 @@
+# nThread 1 nGpus 1 minBytes 256 maxBytes 10737418240 step: 2(factor) warmup iters: 100 iters: 100 agg iters: 1 validation: 0 graph: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid 1411832 on vmss-a100000005 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  1 Group  0 Pid 1411833 on vmss-a100000005 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  2 Group  0 Pid 1411834 on vmss-a100000005 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  3 Group  0 Pid 1411835 on vmss-a100000005 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  4 Group  0 Pid 1411836 on vmss-a100000005 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  5 Group  0 Pid 1411837 on vmss-a100000005 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  6 Group  0 Pid 1411838 on vmss-a100000005 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  7 Group  0 Pid 1411839 on vmss-a100000005 device  7 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  8 Group  0 Pid 2645648 on vmss-a100000004 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  9 Group  0 Pid 2645649 on vmss-a100000004 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 10 Group  0 Pid 2645650 on vmss-a100000004 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 11 Group  0 Pid 2645651 on vmss-a100000004 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 12 Group  0 Pid 2645652 on vmss-a100000004 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 13 Group  0 Pid 2645653 on vmss-a100000004 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 14 Group  0 Pid 2645655 on vmss-a100000004 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 15 Group  0 Pid 2645656 on vmss-a100000004 device  7 [0x00] NVIDIA A100-SXM4-80GB
+NCCL version 2.12.12.MSCCL.0.7.4+cuda12.0
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+         256             4     float    none      -1    37.65    0.01    0.01    N/A    38.66    0.01    0.01    N/A
+         512             8     float    none      -1    40.34    0.01    0.01    N/A    39.21    0.01    0.01    N/A
+        1024            16     float    none      -1    39.31    0.03    0.02    N/A    39.04    0.03    0.02    N/A
+        2048            32     float    none      -1    39.06    0.05    0.05    N/A    38.94    0.05    0.05    N/A
+        4096            64     float    none      -1    39.20    0.10    0.10    N/A    38.85    0.11    0.10    N/A
+        8192           128     float    none      -1    39.76    0.21    0.19    N/A    39.78    0.21    0.19    N/A
+       16384           256     float    none      -1    41.38    0.40    0.37    N/A    40.29    0.41    0.38    N/A
+       32768           512     float    none      -1    45.12    0.73    0.68    N/A    46.52    0.70    0.66    N/A
+       65536          1024     float    none      -1    54.98    1.19    1.12    N/A    54.36    1.21    1.13    N/A
+      131072          2048     float    none      -1    73.82    1.78    1.66    N/A    76.53    1.71    1.61    N/A
+      262144          4096     float    none      -1    77.43    3.39    3.17    N/A    79.49    3.30    3.09    N/A
+      524288          8192     float    none      -1    159.6    3.29    3.08    N/A    160.4    3.27    3.06    N/A
+     1048576         16384     float    none      -1    156.5    6.70    6.28    N/A    155.7    6.73    6.31    N/A
+     2097152         32768     float    none      -1    163.4   12.83   12.03    N/A    161.9   12.96   12.15    N/A
+     4194304         65536     float    none      -1    166.0   25.27   23.69    N/A    165.6   25.34   23.75    N/A
+     8388608        131072     float    none      -1    194.0   43.25   40.55    N/A    193.7   43.32   40.61    N/A
+    16777216        262144     float    none      -1    255.0   65.79   61.68    N/A    250.3   67.04   62.85    N/A
+    33554432        524288     float    none      -1    351.9   95.34   89.38    N/A    344.1   97.52   91.43    N/A
+    67108864       1048576     float    none      -1    647.1  103.71   97.22    N/A    642.2  104.49   97.96    N/A
+   134217728       2097152     float    none      -1    891.0  150.63  141.22    N/A    887.0  151.32  141.86    N/A
+   268435456       4194304     float    none      -1   1591.0  168.72  158.17    N/A   1578.6  170.05  159.42    N/A
+   536870912       8388608     float    none      -1   3010.7  178.32  167.18    N/A   2987.3  179.72  168.49    N/A
+  1073741824      16777216     float    none      -1   5771.1  186.05  174.43    N/A   5727.9  187.46  175.74    N/A
+  2147483648      33554432     float    none      -1    11122  193.09  181.02    N/A    11067  194.04  181.92    N/A
+  4294967296      67108864     float    none      -1    21789  197.12  184.80    N/A
+vmss-a100000005:1411832:1411832 [0] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411832: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411832: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411832: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411832: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411832: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411832: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411832: Test failure common.cu:844
+
+vmss-a100000005:1411834:1411834 [2] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411834: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411834: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411834: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411834: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411834: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411834: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411834: Test failure common.cu:844
+
+vmss-a100000005:1411836:1411836 [4] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411836: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411836: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411836: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411836: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411836: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411836: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411836: Test failure common.cu:844
+
+vmss-a100000005:1411838:1411838 [6] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411838: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411838: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411838: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411838: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411838: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411838: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411838: Test failure common.cu:844
+
+vmss-a100000005:1411833:1411833 [1] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411833: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411833: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411833: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411833: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411833: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411833: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411833: Test failure common.cu:844
+
+vmss-a100000005:1411835:1411835 [3] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411835: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411835: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411835: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411835: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411835: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411835: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411835: Test failure common.cu:844
+
+vmss-a100000005:1411837:1411837 [5] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411837: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411837: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411837: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411837: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411837: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411837: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411837: Test failure common.cu:844
+
+vmss-a100000005:1411839:1411839 [7] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000005: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000005 pid 1411839: Test failure common.cu:377
+ .. vmss-a100000005 pid 1411839: Test failure common.cu:413
+ .. vmss-a100000005 pid 1411839: Test failure common.cu:604
+ .. vmss-a100000005 pid 1411839: Test failure all_gather.cu:83
+ .. vmss-a100000005 pid 1411839: Test failure common.cu:615
+ .. vmss-a100000005 pid 1411839: Test failure common.cu:1019
+ .. vmss-a100000005 pid 1411839: Test failure common.cu:844
+
+vmss-a100000004:2645653:2645653 [5] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645653: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645653: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645653: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645653: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645653: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645653: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645653: Test failure common.cu:844
+
+vmss-a100000004:2645656:2645656 [7] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645656: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645656: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645656: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645656: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645656: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645656: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645656: Test failure common.cu:844
+
+vmss-a100000004:2645652:2645652 [4] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645652: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645652: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645652: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645652: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645652: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645652: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645652: Test failure common.cu:844
+
+vmss-a100000004:2645649:2645649 [1] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645649: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645649: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645649: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645649: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645649: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645649: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645649: Test failure common.cu:844
+
+vmss-a100000004:2645648:2645648 [0] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645648: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645648: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645648: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645648: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645648: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645648: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645648: Test failure common.cu:844
+
+vmss-a100000004:2645650:2645650 [2] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645650: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645650: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645650: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645650: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645650: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645650: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645650: Test failure common.cu:844
+
+vmss-a100000004:2645651:2645651 [3] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645651: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645651: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645651: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645651: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645651: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645651: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645651: Test failure common.cu:844
+
+vmss-a100000004:2645655:2645655 [6] enqueue.cc:691 NCCL WARN MSCCL: something went wrong. MSCCL algorithm needs the input buffer to be divisible by 1536
+
+vmss-a100000004: Test NCCL failure all_gather.cu:49 'internal error / '
+ .. vmss-a100000004 pid 2645655: Test failure common.cu:377
+ .. vmss-a100000004 pid 2645655: Test failure common.cu:413
+ .. vmss-a100000004 pid 2645655: Test failure common.cu:604
+ .. vmss-a100000004 pid 2645655: Test failure all_gather.cu:83
+ .. vmss-a100000004 pid 2645655: Test failure common.cu:615
+ .. vmss-a100000004 pid 2645655: Test failure common.cu:1019
+ .. vmss-a100000004 pid 2645655: Test failure common.cu:844
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun detected that one or more processes exited with non-zero status, thus causing
+the job to be terminated. The first process to do so was:
+
+  Process name: [[15714,1],15]
+  Exit code:    3
+--------------------------------------------------------------------------
