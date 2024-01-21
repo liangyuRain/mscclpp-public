@@ -1,0 +1,71 @@
+(base) azureuser@vmss-a100000005:~/liangyu/mscclpp-public$ mpirun \
+> --mca btl_tcp_if_include eth0 \
+> --mca pml ob1 -mca btl ^openib \
+> -np 16 -npernode 8 \
+> -H 10.0.0.4:8,10.0.0.5:8 \
+> -x CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+> -x LD_LIBRARY_PATH=/home/azureuser/liangyu/msccl/build/lib/ \
+> -x NCCL_IB_PCI_RELAXED_ORDERING=1 \
+> -x NCCL_SOCKET_IFNAME=eth0 \
+> -x CUDA_DEVICE_ORDER=PCI_BUS_ID \
+> -x NCCL_NET_GDR_LEVEL=5 \
+> -x NCCL_DEBUG=WARN \
+> -x NCCL_DEBUG_SUBSYS=INIT \
+> -x NCCL_PXN_DISABLE=1 \
+> -x NCCL_ALGO=RING,TREE \
+> -x NCCL_PROTO=Simple \
+> -x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml \
+> /home/azureuser/liangyu/nccl-tests/build/all_reduce_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 100 -c 0 -a 2
+# nThread 1 nGpus 1 minBytes 256 maxBytes 10737418240 step: 2(factor) warmup iters: 100 iters: 100 agg iters: 1 validation: 0 graph: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid 1756919 on vmss-a100000005 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  1 Group  0 Pid 1756920 on vmss-a100000005 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  2 Group  0 Pid 1756921 on vmss-a100000005 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  3 Group  0 Pid 1756922 on vmss-a100000005 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  4 Group  0 Pid 1756923 on vmss-a100000005 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  5 Group  0 Pid 1756924 on vmss-a100000005 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  6 Group  0 Pid 1756925 on vmss-a100000005 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  7 Group  0 Pid 1756926 on vmss-a100000005 device  7 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  8 Group  0 Pid 2887876 on vmss-a100000004 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  9 Group  0 Pid 2887877 on vmss-a100000004 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 10 Group  0 Pid 2887878 on vmss-a100000004 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 11 Group  0 Pid 2887879 on vmss-a100000004 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 12 Group  0 Pid 2887880 on vmss-a100000004 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 13 Group  0 Pid 2887881 on vmss-a100000004 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 14 Group  0 Pid 2887882 on vmss-a100000004 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 15 Group  0 Pid 2887883 on vmss-a100000004 device  7 [0x00] NVIDIA A100-SXM4-80GB
+NCCL version 2.12.12.MSCCL.0.7.4+cuda12.0
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+         256            64     float     sum      -1    236.3    0.00    0.00    N/A    234.9    0.00    0.00    N/A
+         512           128     float     sum      -1    234.3    0.00    0.00    N/A    234.7    0.00    0.00    N/A
+        1024           256     float     sum      -1    244.8    0.00    0.01    N/A    244.1    0.00    0.01    N/A
+        2048           512     float     sum      -1    254.4    0.01    0.02    N/A    259.5    0.01    0.01    N/A
+        4096          1024     float     sum      -1    365.1    0.01    0.02    N/A    285.2    0.01    0.03    N/A
+        8192          2048     float     sum      -1    367.0    0.02    0.04    N/A    286.4    0.03    0.05    N/A
+       16384          4096     float     sum      -1    290.7    0.06    0.11    N/A    369.5    0.04    0.08    N/A
+       32768          8192     float     sum      -1    302.0    0.11    0.20    N/A    301.6    0.11    0.20    N/A
+       65536         16384     float     sum      -1    400.3    0.16    0.31    N/A    437.7    0.15    0.28    N/A
+      131072         32768     float     sum      -1    404.6    0.32    0.61    N/A    427.7    0.31    0.57    N/A
+      262144         65536     float     sum      -1    433.0    0.61    1.14    N/A    445.2    0.59    1.10    N/A
+      524288        131072     float     sum      -1    596.7    0.88    1.65    N/A    582.1    0.90    1.69    N/A
+     1048576        262144     float     sum      -1    616.9    1.70    3.19    N/A    617.1    1.70    3.19    N/A
+     2097152        524288     float     sum      -1    623.3    3.36    6.31    N/A    602.0    3.48    6.53    N/A
+     4194304       1048576     float     sum      -1    702.0    5.97   11.20    N/A    680.5    6.16   11.56    N/A
+     8388608       2097152     float     sum      -1    772.7   10.86   20.35    N/A    729.9   11.49   21.55    N/A
+    16777216       4194304     float     sum      -1    879.6   19.07   35.76    N/A    840.9   19.95   37.41    N/A
+    33554432       8388608     float     sum      -1    945.1   35.50   66.57    N/A    944.2   35.54   66.63    N/A
+    67108864      16777216     float     sum      -1   1209.6   55.48  104.03    N/A   1210.1   55.46  103.98    N/A
+   134217728      33554432     float     sum      -1   1690.5   79.39  148.86    N/A   1693.8   79.24  148.58    N/A
+   268435456      67108864     float     sum      -1   2981.0   90.05  168.84    N/A   2995.2   89.62  168.04    N/A
+   536870912     134217728     float     sum      -1   5671.6   94.66  177.49    N/A   5672.1   94.65  177.47    N/A
+  1073741824     268435456     float     sum      -1    10986   97.74  183.25    N/A    10996   97.65  183.09    N/A
+  2147483648     536870912     float     sum      -1    21569   99.56  186.68    N/A    21574   99.54  186.64    N/A
+  4294967296    1073741824     float     sum      -1    42821  100.30  188.06    N/A    42825  100.29  188.05    N/A
+  8589934592    2147483648     float     sum      -1    85085  100.96  189.30    N/A    85125  100.91  189.21    N/A
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 57.4991 
+#
