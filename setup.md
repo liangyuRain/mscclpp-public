@@ -173,3 +173,36 @@ Originally, running `test_pipeline` also has this error. However, after fixing t
 - Right now, the best 2x A100 node performance is achieved by manually edge-split the topology into local rings and one-to-one inter-node connections. IB bw is set to 20GB/s with NVLink set to 300GB/s, forcing code to use IB as less as possible. The optimal tree for large data sizes appears to be is to generate symmetric k=1 tree and then ninstance=6, achieving 250GB/s algbw at 3GB.
 - Flushing proxy channel more frequently seems to improve (allgather) performance. Turns out it is beneficial to do `putWithSignalAndFlush` at allgather root.
 - `CUDA error code=701(b'CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES')` or `CUDA error code=701(b'CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES')` can be caused by compiling two different kernels with the same name in a single run, or feeding the wrong kernel name into `KernelBuilder`.
+
+# MSCCL
+
+Compile instructions:
+```shell
+git clone https://github.com/microsoft/msccl.git
+cd msccl/
+make -j src.build NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80"
+cd ..
+git clone https://github.com/nvidia/nccl-tests.git
+cd nccl-tests/
+make MPI=1 NCCL_HOME=/home/azureuser/liangyu/msccl/build/ -j
+cd ..
+```
+Run command:
+```shell
+mpirun \
+--mca btl_tcp_if_include eth0 \
+--mca pml ob1 -mca btl ^openib \
+-np 16 -npernode 8 \
+-H 10.0.0.4,10.0.0.5 \
+-x LD_LIBRARY_PATH=/home/azureuser/liangyu/msccl/build/lib/ \
+-x NCCL_IB_PCI_RELAXED_ORDERING=1 \
+-x NCCL_SOCKET_IFNAME=eth0 \
+-x CUDA_DEVICE_ORDER=PCI_BUS_ID \
+-x NCCL_NET_GDR_LEVEL=5 \
+-x NCCL_DEBUG=WARN \
+-x NCCL_DEBUG_SUBSYS=INIT \
+-x NCCL_PXN_DISABLE=1 \
+-x NCCL_ALGO=MSCCL,RING,TREE \
+-x MSCCL_XML_FILES=/home/azureuser/liangyu/schedule.xml \
+/home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 10 -c 1 -a 2
+```
