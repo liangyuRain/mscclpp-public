@@ -184,7 +184,7 @@ make -j src.build NVCC_GENCODE="-gencode=arch=compute_80,code=sm_80"
 cd ..
 git clone https://github.com/nvidia/nccl-tests.git
 cd nccl-tests/
-make MPI=1 NCCL_HOME=/home/azureuser/liangyu/msccl/build/ -j
+make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.5a1/ NCCL_HOME=/home/azureuser/liangyu/msccl/build/ -j
 cd ..
 ```
 Run command:
@@ -193,7 +193,8 @@ mpirun \
 --mca btl_tcp_if_include eth0 \
 --mca pml ob1 -mca btl ^openib \
 -np 16 -npernode 8 \
--H 10.0.0.4,10.0.0.5 \
+-H 10.0.0.4:8,10.0.0.5:8 \
+-x CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 -x LD_LIBRARY_PATH=/home/azureuser/liangyu/msccl/build/lib/ \
 -x NCCL_IB_PCI_RELAXED_ORDERING=1 \
 -x NCCL_SOCKET_IFNAME=eth0 \
@@ -202,7 +203,8 @@ mpirun \
 -x NCCL_DEBUG=WARN \
 -x NCCL_DEBUG_SUBSYS=INIT \
 -x NCCL_PXN_DISABLE=1 \
--x NCCL_ALGO=MSCCL,RING,TREE \
--x MSCCL_XML_FILES=/home/azureuser/liangyu/schedule.xml \
-/home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 10 -c 1 -a 2
+-x NCCL_ALGO=MSCCL,TREE \
+-x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml
+-x MSCCL_XML_FILES=/home/azureuser/liangyu/mscclpp-public/pipeline_msccl_xml/msccl_allgather_k1_inst1_NVLINK300_IB25.xml \
+/home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10M -f 2 -g 1 -z 0 -n 100 -w 10 -c 1 -a 2
 ```
