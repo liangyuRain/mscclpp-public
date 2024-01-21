@@ -185,14 +185,14 @@ if __name__ == "__main__":
             max_reduce_blocks = math.floor((MAX_NBLOCKS / (ninstance * RS_k) - n_parallel_sm_blocks * 14) / 2)
             if max_reduce_blocks <= 0:
                 break
-            nreduce = [1, 2, 4, 8, 12, 16, 20, 24, 32]
+            nreduce = [0, 1, 2, 4, 8, 12, 16, 20, 24, 32]
             nreduce = [v for v in nreduce if v < max_reduce_blocks] + [max_reduce_blocks]
             for n_parallel_reduce_blocks in nreduce:
                 max_n_pipeline = math.floor(MAX_NBLOCKS / (ninstance * RS_k) / (n_parallel_reduce_blocks * 2 + n_parallel_sm_blocks * 14))
                 if max_n_pipeline <= 0:
                     break
-                npipeline = [1, 2, 3, 4, 6, 8]
-                npipeline = [v for v in npipeline if v < max_n_pipeline] + [max_n_pipeline]
+                npipeline = [1, 2, 3, 4]
+                # npipeline = [v for v in npipeline if v < max_n_pipeline] + [max_n_pipeline]
                 for n_pipeline in npipeline:
                     Tsp, Csp, kp = multi_instance(RS_Ts, RS_Cs, RS_k, ninstance)
                     try:
