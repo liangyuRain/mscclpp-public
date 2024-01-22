@@ -100,19 +100,16 @@ class KernelBuilder:
         minor = _check_cuda_errors(
             cudart.cudaDeviceGetAttribute(cudart.cudaDeviceAttr.cudaDevAttrComputeCapabilityMinor, device_id)
         )
-        cuda_home = os.environ.get("CUDA_HOME")
-        nvcc = os.path.join(cuda_home, "bin/nvcc") if cuda_home else "nvcc"
+        hips_home = os.environ.get("HIPS_HOME")
+        hcc = os.path.join(hips_home, "bin/hcc") if hips_home else "hcc"
         command = [
-            nvcc,
+            hcc,
             f"-std={std_version}",
-            "-ptx",
-            "-Xcompiler",
-            "-Wall,-Wextra",
+            "-fgpu-rdc",  # Enable relocatable device code
+            "-hc", "-H", "-w",
             f"-I{include_dir}",
             f"{source_file}",
-            f"--gpu-architecture=compute_{major}{minor}",
-            f"--gpu-code=sm_{major}{minor},compute_{major}{minor}",
-            "-o",
+            f"-o",
             f"{self._tempdir.name}/{output_file}",
         ]
         if self.macros:

@@ -8,49 +8,11 @@ a100-srg-0 10.0.0.5
 ```
 git config --add --local core.sshCommand 'ssh -i /home/azureuser/liangyu/.ssh/id_ed25519'
 ```
-- Machine has cuda 12.2. Thus, the base docker image under `mscclpp-public/docker` has to be changed to `FROM nvidia/cuda:12.2.0-devel-ubuntu20.04`.
-- Build an image called `liangyu-mscclpp`: 
-```shell
-docker build -t liangyu-mscclpp -f mscclpp-public/docker/base-x-cuda12.2.dockerfile .
+- docker
 ```
-- Create a container named `liangyu-mscclpp` using the image `liangyu-mscclpp` we just built:
-```shell
-docker run --gpus all -it --privileged --net=host --ipc=host -p 81:5001 -d --name liangyu-mscclpp --entrypoint bash liangyu-mscclpp
+docker pull ghcr.io/microsoft/mscclpp/mscclpp:base-dev-rocm6.0
+docker run --security-opt seccomp=unconfined --group-add video -it --ulimit memlock=-1:-1 --privileged --net=host --ipc=host -p 81:5001 -d --name <container_name> --entrypoint bash <image_name>
 ```
-- Copy `mscclpp-public` into the container:
-```shell
-docker cp mscclpp-public/ liangyu-mscclpp:/root/
-```
-- Enter the container:
-```shell
-docker exec -it liangyu-mscclpp bash
-```
-- Install miniconda:
-```shell
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-~/miniconda3/bin/conda init bash
-```
-- Create a conda environment (for mpirun, one may skip this):
-```shell
-conda create --name mscclpp python=3.8
-conda activate mscclpp
-```
-- The `cuda-python==12.1.0` and `cupy-cuda12x` in `mscclpp-public/python/test/requirements_cu12.txt` cannot be found by conda. Remove them and run:
-```shell
-conda install --file mscclpp-public/python/requirements_cu12.txt -c conda-forge
-```
-- Because cuda version is 12.2, we install `cuda-python==12.2.0` instead:
-```shell
-pip install cuda-python==12.2.0
-```
-- Other necessary packages:
-```shell
-pip install cupy-cuda12x cmake==3.25.0
-conda install networkx
-```
-- OpenMPI is recommended. One can uninstall and `conda install mpi4py` without `conda-forge` to install openmpi.
 
 # Build msccl++
 - Remove, create, and move to `build` folder under `mscclpp-public`.
