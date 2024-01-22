@@ -78,7 +78,7 @@ def check_correctness(memory, func, niter=100):
     for p in range(niter):
         memory[:] = cp.ones(memory.shape).astype(data_type) * (p * MPI.COMM_WORLD.size + MPI.COMM_WORLD.rank)
         cp.cuda.runtime.deviceSynchronize()
-        output_memory = func(0)
+        output_memory = func(None)
         cp.cuda.runtime.deviceSynchronize()
         expected = cp.zeros_like(memory)
         for i in range(MPI.COMM_WORLD.size):
@@ -104,7 +104,7 @@ def bench_time(niter: int, func):
     with stream:
         stream.begin_capture()
         for i in range(niter):
-            func(stream.ptr)
+            func(stream)
         graph = stream.end_capture()
 
     # now run a warm up round
@@ -213,10 +213,10 @@ if __name__ == "__main__":
     shm_comm.Free()
     cp.cuda.Device(MPI.COMM_WORLD.rank % N_GPUS_PER_NODE).use()
 
-    if MPI.COMM_WORLD.rank < 8:
-        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 3])
-    else:
-        os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 2])
+    # if MPI.COMM_WORLD.rank < 8:
+    #     os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 3])
+    # else:
+    #     os.environ["MSCCLPP_HCA_DEVICES"] = ",".join([f"mlx5_{i}" for i in range(9) if i != 2])
 
     # create a MscclppGroup
     network_interface = "eth0"
