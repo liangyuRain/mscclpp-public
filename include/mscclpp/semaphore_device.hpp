@@ -23,7 +23,7 @@ struct Host2DeviceSemaphoreDeviceHandle {
     if (max_poll <= 0 || count <= 0) {
       return 0;
     } else {
-      if (max_poll < count) count = max_poll;
+      if ((uint64_t) max_poll < count) count = max_poll;
       *expectedInboundSemaphoreId += count;
       return count;
     }
@@ -57,7 +57,7 @@ struct SmDevice2DeviceSemaphoreDeviceHandle {
     if (max_poll <= 0 || count <= 0) {
       return 0;
     } else {
-      if (max_poll < count) count = max_poll;
+      if ((uint64_t) max_poll < count) count = max_poll;
       *expectedInboundSemaphoreId += count;
       return count;
     }
