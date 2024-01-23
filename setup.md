@@ -24,6 +24,12 @@ bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
 conda create --name mscclpp python=3.9
 conda activate mscclpp
 ```
+-- Find mpicc using find
+```shell
+rm ~/miniconda3/envs/mscclpp/compiler_compat/ld
+env MPICC=/usr/mpi/gcc/openmpi-4.1.5a1/bin/mpicc pip install --no-cache-dir mpi4py
+pip install prettytable netifaces pytest numpy matplotlib networkx
+```
 
 # Build msccl++
 - Remove, create, and move to `build` folder under `mscclpp-public`.
@@ -195,8 +201,8 @@ make -j
 ```shell
 git clone https://github.com/ROCmSoftwarePlatform/rccl-tests.git
 cd rccl-tests
-make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.5a1 HIP_HOME=/opt/rocm/bin/hipcc RCCL_HOME=/home/amdautomation/liangyu/rccl/build
+make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.0rc5/ HIP_HOME=/opt/rocm/bin/hipcc RCCL_HOME=/root/rccl/build
 ```
 ```shell
-mpirun --allow-run-as-root -tag-output -map-by ppr:8:node -bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_exclude lo,docker0 -mca coll_hcoll_enable 0 -x LD_PRELOAD=/rccl/build/librccl.so:$LD_PRELOAD -x NCCL_DEBUG=WARN /rccl-tests/build/all_gather_perf -b 1 -e 16G -f 2 -g 1 -c 1 -n 1000 -w 20 -G 1
+/usr/local/mpi/bin/mpirun --allow-run-as-root -tag-output -map-by ppr:16:node -bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_exclude lo,docker0 -mca coll_hcoll_enable 0 -x LD_PRELOAD=/root/rccl/build/librccl.so:$LD_PRELOAD -x NCCL_DEBUG=WARN /root/rccl-tests/build/all_gather_perf -b 1 -e 10G -f 2 -g 1 -c 1 -n 100 -w 20 -G 1
 ```
