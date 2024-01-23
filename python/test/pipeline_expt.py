@@ -21,7 +21,7 @@ from mscclpp import ProxyService
 
 BENCH_METHOD = 1
 
-DEVICE_ID_ROCM_TO_CUPY_MAP = {
+DEVICE_ID_ROCM_TO_CUPY_MAP_NODE_10_9 = {
     0: 1,
     1: 11,
     2: 0,
@@ -38,6 +38,25 @@ DEVICE_ID_ROCM_TO_CUPY_MAP = {
     13: 6,
     14: 2,
     15: 15,
+}
+
+DEVICE_ID_ROCM_TO_CUPY_MAP_NODE_10_8 = {
+    0: 9,
+    1: 8,
+    2: 1,
+    3: 0,
+    4: 2,
+    5: 13,
+    6: 10,
+    7: 15,
+    8: 6,
+    9: 3,
+    10: 4,
+    11: 5,
+    12: 14,
+    13: 7,
+    14: 11,
+    15: 12,
 }
 
 
@@ -466,7 +485,8 @@ if __name__ == "__main__":
     warmup_iters = 20
     bench_iters = 50
 
-    device_map = lambda rank: DEVICE_ID_ROCM_TO_CUPY_MAP[rank]
+    # device_map = lambda rank: DEVICE_ID_ROCM_TO_CUPY_MAP_NODE_10_9[rank]
+    device_map = lambda rank: DEVICE_ID_ROCM_TO_CUPY_MAP_NODE_10_8[rank]
 
     assert group.nranks == 16
 
