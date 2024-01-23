@@ -4,6 +4,7 @@ import itertools
 import math
 import numpy as np
 from mpi4py import MPI
+import pickle
 
 import mscclpp.comm as mscclpp_comm
 from .pipeline_schedule import (
@@ -467,19 +468,31 @@ if __name__ == "__main__":
 
     device_map = lambda rank: DEVICE_ID_ROCM_TO_CUPY_MAP[rank]
 
-    ring1 = list(map(device_map, [0,8,9,13,12,14,15,11,10,2,3,7,6,4,5,1]))
-    ring2 = list(map(device_map, [0,1,9,8,12,13,15,14,10,11,3,2,6,7,5,4]))
-    ring3 = list(map(device_map, [0,1,10,11,15,14,13,12,8,9,2,3,7,6,5,4]))
-
     assert group.nranks == 16
 
-    k = 3
-    Ts, Cs = {}, {}
-    for i, ring in enumerate([ring1, ring2, ring3]):
-        for u in range(16):
-            start = ring.index(u)
-            Ts[u, i] = [[(ring[(start + d) % 16], ring[(start + d + 1) % 16])] for d in range(15)]
-            Cs[u, i] = 1
+    # ring1 = list(map(device_map, [0,8,9,13,12,14,15,11,10,2,3,7,6,4,5,1]))
+    # ring2 = list(map(device_map, [0,1,9,8,12,13,15,14,10,11,3,2,6,7,5,4]))
+    # ring3 = list(map(device_map, [0,1,10,11,15,14,13,12,8,9,2,3,7,6,5,4]))
+
+    # k = 3
+    # Ts, Cs = {}, {}
+    # for i, ring in enumerate([ring1, ring2, ring3]):
+    #     for u in range(16):
+    #         start = ring.index(u)
+    #         Ts[u, i] = [[(ring[(start + d) % 16], ring[(start + d + 1) % 16])] for d in range(15)]
+    #         Cs[u, i] = 1
+
+    k = 1
+    tree_name = f"amd_sym_nnodes1_IB_13_xGMI35_bw_k_{k}_187.pkl"
+    with open(f"/root/mscclpp-public/amd_trees/{tree_name}.pkl", "rb") as f:
+        Ts, Cs = pickle.load(f)
+    
+    nTs, nCs = {}, {}
+    for u, i in Ts:
+        nTs[device_map(u), i] = [[(device_map(a), device_map(b)) for a, b in l[0]] for l in Ts[u, i]]
+        nCs[device_map(u), i] = Cs[u, i]
+
+    Ts, Cs = nTs, nCs
 
     run_allgather(Ts, Cs, k, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
