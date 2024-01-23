@@ -503,13 +503,13 @@ if __name__ == "__main__":
     #         Cs[u, i] = 1
 
     k = 1
-    tree_name = f"amd_sym_nnodes1_IB_13_xGMI35_bw_k_{k}_187.pkl"
-    with open(f"/root/mscclpp-public/amd_trees/{tree_name}.pkl", "rb") as f:
+    tree_name = f"amd_sym_nnodes1_IB_13_xGMI35_bw_k_{k}_187"
+    with open(f"/home/amdautomation/liangyu/mscclpp-public/amd_trees/{tree_name}.pkl", "rb") as f:
         Ts, Cs = pickle.load(f)
     
     nTs, nCs = {}, {}
     for u, i in Ts:
-        nTs[device_map(u), i] = [[(device_map(a), device_map(b)) for a, b in l[0]] for l in Ts[u, i]]
+        nTs[device_map(u), i] = [[(device_map(a), device_map(b)) for a, b in l] for l in Ts[u, i]]
         nCs[device_map(u), i] = Cs[u, i]
 
     Ts, Cs = nTs, nCs
