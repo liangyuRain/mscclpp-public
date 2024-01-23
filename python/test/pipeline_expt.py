@@ -6,18 +6,38 @@ import numpy as np
 from mpi4py import MPI
 
 import mscclpp.comm as mscclpp_comm
-from pipeline_schedule import (
+from .pipeline_schedule import (
+    PipelineKernel,
     allreduce_kernel,
     allgather_kernel,
     reduce_scatter_kernel,
     reduce_scatter_kernel_hack,
     connect_nvlink,
 )
-from mscclpp_mpi import MpiGroup
+from .mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService
 
 
-BENCH_METHOD = 2
+BENCH_METHOD = 1
+
+DEVICE_ID_ROCM_TO_CUPY_MAP = {
+    0: 1,
+    1: 11,
+    2: 0,
+    3: 10,
+    4: 4,
+    5: 3,
+    6: 5,
+    7: 14,
+    8: 9,
+    9: 8,
+    10: 13,
+    11: 7,
+    12: 12,
+    13: 6,
+    14: 2,
+    15: 15,
+}
 
 
 def bench_time(niter: int, func):
@@ -360,6 +380,73 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
     proxy_service.stop_proxy()
 
 
+def test_peer_to_peer(group: mscclpp_comm.CommGroup, connections: dict, src: int, dest: int):
+    recv_sm_channels, send_sm_channels = {}, {}
+    recv_proxy_channels, send_proxy_channels = {}, {}
+    nelem_total = 3 * 2 ** 25
+    nelem_per_send = 2 ** 18
+    nblocks = 24
+    assert nelem_total % nblocks == 0
+    shard_size = nelem_total // nblocks
+    proxy_service = ProxyService()
+    if group.my_rank == src:
+        # sender
+        memory = cp.arange(nelem_total, dtype=cp.int32)
+        if group.my_rank // 16 == dest // 16:
+            send_sm_channels = {bid: [group.make_sm_channel(memory, connections[dest], dest)]
+                                for bid in range(nblocks)}
+        else:
+            send_proxy_channels = {bid: [group.make_proxy_channel(proxy_service, memory, connections[dest], dest)]
+                                   for bid in range(nblocks)}
+    elif group.my_rank == dest:
+        # recver
+        memory = cp.zeros(nelem_total, dtype=cp.int32)
+        if group.my_rank // 16 == src // 16:
+            recv_sm_channels = {bid: [group.make_sm_channel(memory, connections[src], src)]
+                                for bid in range(nblocks)}
+        else:
+            recv_proxy_channels = {bid: [group.make_proxy_channel(proxy_service, memory, connections[src], src)]
+                                   for bid in range(nblocks)}
+    else:
+        pass
+
+    data_chunk_offsets = {bid: shard_size * bid for bid in range(nblocks)}
+    data_chunk_sizes = {bid: shard_size for bid in range(nblocks)}
+    total_chunks = nblocks
+    scratch_size = 0
+    node_types = {bid: 1 for bid in range(nblocks)}
+    
+    if group.my_rank == src or group.my_rank == dest:
+        kernel = PipelineKernel(recv_sm_channels, send_sm_channels, recv_proxy_channels, send_proxy_channels,
+                                memory, data_chunk_offsets, data_chunk_sizes, total_chunks, scratch_size, {}, {},
+                                node_types, nblocks)
+    else:
+        kernel = None
+
+    proxy_service.start_proxy()
+    group.barrier()
+    if kernel is not None:
+        res = benchmark(kernel.get_func(nelem_total, nelem_per_send), n_warmup=100, n_repeat=100).gpu_times
+    else:
+        res = [-1]
+    avg_time = np.average(res)  # seconds
+    min_time = np.min(res)
+
+    group.barrier()
+    proxy_service.stop_proxy()
+
+    size = nelem_total * 4
+    if group.my_rank == src:
+        print_row(str((src, dest)),
+                size, 
+                f"{avg_time * 1e6:.2f}",
+                f"{min_time * 1e6:.2f}",
+                f"{(size / 2 ** 30) / avg_time:.2f}",
+                f"{(size / 2 ** 30) / min_time:.2f}")
+    # if kernel is not None:
+    #     assert cp.array_equal(memory, cp.arange(nelem_total, dtype=cp.int32))
+
+
 if __name__ == "__main__":
     cp.cuda.Device(MPI.COMM_WORLD.rank).use()
     mpi_group = MpiGroup(list(range(16)))
@@ -378,9 +465,11 @@ if __name__ == "__main__":
     warmup_iters = 20
     bench_iters = 50
 
-    ring1 = [0,8,9,13,12,14,15,11,10,2,3,7,6,4,5,1]
-    ring2 = [0,1,9,8,12,13,15,14,10,11,3,2,6,7,5,4]
-    ring3 = [0,1,10,11,15,14,13,12,8,9,2,3,7,6,5,4]
+    device_map = lambda rank: DEVICE_ID_ROCM_TO_CUPY_MAP[rank]
+
+    ring1 = list(map(device_map, [0,8,9,13,12,14,15,11,10,2,3,7,6,4,5,1]))
+    ring2 = list(map(device_map, [0,1,9,8,12,13,15,14,10,11,3,2,6,7,5,4]))
+    ring3 = list(map(device_map, [0,1,10,11,15,14,13,12,8,9,2,3,7,6,5,4]))
 
     assert group.nranks == 16
 
@@ -389,7 +478,7 @@ if __name__ == "__main__":
     for i, ring in enumerate([ring1, ring2, ring3]):
         for u in range(16):
             start = ring.index(u)
-            Ts[u, i] = [[(ring[(start + d) % 16], ring[(start + d + 1) % 16])] for d in range(16)]
+            Ts[u, i] = [[(ring[(start + d) % 16], ring[(start + d + 1) % 16])] for d in range(15)]
             Cs[u, i] = 1
 
     run_allgather(Ts, Cs, k, group=group, connections=connections, 
@@ -412,8 +501,8 @@ if __name__ == "__main__":
                        check_iters=check_iters,
                        warmup_iters=warmup_iters,
                        iters=bench_iters,
-                       n_parallel_sm_blocks=4,
-                       n_parallel_reduce_blocks=4,
+                       n_parallel_sm_blocks=2,
+                       n_parallel_reduce_blocks=2,
                        coll_re=True,
                        skip_leaf_tb=True,
                        n_pipeline=1)
