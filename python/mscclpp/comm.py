@@ -59,21 +59,21 @@ class CommGroup:
         self.bootstrap.recv(tensor.ctypes.data, tensor.size * tensor.itemsize, peer, tag)
 
     def my_ib_device(self, local_rank: int) -> Transport:
-        if local_rank == 0:
+        if local_rank // 2 == 0:
             return Transport.IB0
-        if local_rank == 1:
+        if local_rank // 2 == 1:
             return Transport.IB1
-        if local_rank == 2:
+        if local_rank // 2 == 2:
             return Transport.IB2
-        if local_rank == 3:
+        if local_rank // 2 == 3:
             return Transport.IB3
-        if local_rank == 4:
+        if local_rank // 2 == 4:
             return Transport.IB4
-        if local_rank == 5:
+        if local_rank // 2 == 5:
             return Transport.IB5
-        if local_rank == 6:
+        if local_rank // 2 == 6:
             return Transport.IB6
-        if local_rank == 7:
+        if local_rank // 2 == 7:
             return Transport.IB7
         else:
             assert False  # only 8 IBs are supported

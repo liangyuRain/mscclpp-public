@@ -152,6 +152,8 @@ Originally, running `test_pipeline` also has this error. However, after fixing t
 - Right now, the best 2x A100 node performance is achieved by manually edge-split the topology into local rings and one-to-one inter-node connections. IB bw is set to 20GB/s with NVLink set to 300GB/s, forcing code to use IB as less as possible. The optimal tree for large data sizes appears to be is to generate symmetric k=1 tree and then ninstance=6, achieving 250GB/s algbw at 3GB.
 - Flushing proxy channel more frequently seems to improve (allgather) performance. Turns out it is beneficial to do `putWithSignalAndFlush` at allgather root.
 - `CUDA error code=701(b'CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES')` or `CUDA error code=701(b'CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES')` can be caused by compiling two different kernels with the same name in a single run, or feeding the wrong kernel name into `KernelBuilder`.
+- On amd nodes, it is found that having check iters are benficial to performance. Does this also hold on NVIDIA nodes?
+- On amd nodes, it is found that the device id in cupy is different from rocm-smi. Is it also the case on NVIDIA nodes?
 
 # MSCCL
 
