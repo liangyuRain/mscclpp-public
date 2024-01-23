@@ -362,8 +362,10 @@ def run_reduce_scatter(Ts: dict, Cs: dict, k: int, group: mscclpp_comm.CommGroup
 
 if __name__ == "__main__":
     cp.cuda.Device(MPI.COMM_WORLD.rank).use()
-    mpi_group = MpiGroup(list(range(8)))
+    mpi_group = MpiGroup(list(range(16)))
     group = mscclpp_comm.CommGroup(mpi_group.comm)
+    connections = connect_nvlink(group, [v for v in range(group.nranks) 
+                                         if v != group.my_rank])
 
     def channel_type(dest):
         tp = "sm"
@@ -376,15 +378,21 @@ if __name__ == "__main__":
     warmup_iters = 20
     bench_iters = 50
 
-    # allpairs
-    AG_k = 4
-    AG_Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
-             for u, i in itertools.product(range(group.nranks), range(AG_k))}
-    AG_Cs = {(u, i): 1 for u, i in itertools.product(range(group.nranks), range(AG_k))}
-    connections = connect_nvlink(group, [v for v in range(group.nranks) 
-                                         if v != group.my_rank])
+    ring1 = [0,8,9,13,12,14,15,11,10,2,3,7,6,4,5,1]
+    ring2 = [0,1,9,8,12,13,15,14,10,11,3,2,6,7,5,4]
+    ring3 = [0,1,10,11,15,14,13,12,8,9,2,3,7,6,5,4]
 
-    run_allgather(AG_Ts, AG_Cs, AG_k, group=group, connections=connections, 
+    assert group.nranks == 16
+
+    k = 3
+    Ts, Cs = {}, {}
+    for i, ring in enumerate([ring1, ring2, ring3]):
+        for u in range(16):
+            start = ring.index(u)
+            Ts[u, i] = [[(ring[(start + d) % 16], ring[(start + d + 1) % 16])] for d in range(16)]
+            Cs[u, i] = 1
+
+    run_allgather(Ts, Cs, k, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
                   data_lengths=data_lengths,
                   send_lengths=[2 ** 18],
@@ -396,15 +404,7 @@ if __name__ == "__main__":
     if group.my_rank == 0:
         print()
 
-    # allpairs
-    RS_k = 1
-    RS_Ts = {(u, i): [[(u, v)] for v in range(group.nranks) if u != v]
-             for u, i in itertools.product(range(group.nranks), range(RS_k))}
-    RS_Cs = {(u, i): 1 for u, i in itertools.product(range(group.nranks), range(RS_k))}
-    connections = connect_nvlink(group, [v for v in range(group.nranks) 
-                                         if v != group.my_rank])
-
-    run_reduce_scatter(RS_Ts, RS_Cs, RS_k, group=group, connections=connections, 
+    run_reduce_scatter(Ts, Cs, k, group=group, connections=connections, 
                        connection_types={dest: channel_type(dest) for dest in connections},
                        data_lengths=data_lengths,
                        send_lengths=[2 ** 18],
@@ -416,21 +416,12 @@ if __name__ == "__main__":
                        n_parallel_reduce_blocks=4,
                        coll_re=True,
                        skip_leaf_tb=True,
-                       n_pipeline=2)
+                       n_pipeline=1)
 
     if group.my_rank == 0:
         print()
 
-    # ring
-    AR_k = 4
-    AR_Ts = {(u, i): [[((u + d) % group.nranks, (u + d + 1) % group.nranks)]
-                      for d in range(group.nranks - 1)]
-             for u, i in itertools.product(range(group.nranks), range(AR_k))}
-    AR_Cs = {(u, i): 1 for u, i in itertools.product(range(group.nranks), range(AR_k))}
-    connections = connect_nvlink(group, [(group.my_rank - 1) % group.nranks,
-                                         (group.my_rank + 1) % group.nranks])
-
-    run_allreduce(AR_Ts, AR_Cs, AR_k, group=group, connections=connections, 
+    run_allreduce(Ts, Cs, k, group=group, connections=connections, 
                   connection_types={dest: channel_type(dest) for dest in connections},
                   data_lengths=data_lengths,
                   send_lengths=[2 ** 15],
@@ -444,7 +435,7 @@ if __name__ == "__main__":
 
     # reduce-scatter + allgather
     connections = connect_nvlink(group, [r for r in range(group.nranks) if r != group.my_rank])
-    run_fusion_allreduce(RS_Ts, RS_Cs, RS_k, AG_Ts, AG_Cs, AG_k,
+    run_fusion_allreduce(Ts, Cs, k, Ts, Cs, k,
                          group=group, connections=connections, 
                          connection_types={dest: channel_type(dest) for dest in connections},
                          data_lengths=data_lengths,
