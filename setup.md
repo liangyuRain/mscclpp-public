@@ -9,9 +9,20 @@ a100-srg-0 10.0.0.5
 git config --add --local core.sshCommand 'ssh -i /home/azureuser/liangyu/.ssh/id_ed25519'
 ```
 - docker
-```
+```shell
 docker pull ghcr.io/microsoft/mscclpp/mscclpp:base-dev-rocm6.0
 docker run --security-opt seccomp=unconfined --group-add video -it --ulimit memlock=-1:-1 --privileged --net=host --ipc=host -p 81:5001 -d --name <container_name> --entrypoint bash <image_name>
+```
+- Install miniconda:
+```shell
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+~/miniconda3/bin/conda init bash
+```
+```shell
+conda create --name mscclpp python=3.9
+conda activate mscclpp
 ```
 
 # Build msccl++
@@ -169,4 +180,23 @@ mpirun \
 -x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml \
 -x MSCCL_XML_FILES=/home/azureuser/liangyu/mscclpp-public/pipeline_msccl_xml/msccl_allgather_k1_inst1_NVLINK300_IB25.xml \
 /home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10M -f 2 -g 1 -z 0 -n 100 -w 10 -c 1 -a 2
+```
+
+# RCCL
+
+```shell
+git clone https://github.com/ROCmSoftwarePlatform/rccl.git
+cd rccl
+mkdir build
+cd build
+CXX=/opt/rocm/bin/hipcc cmake -DCMAKE_PREFIX_PATH=/opt/rocm/ ..
+make -j
+```
+```shell
+git clone https://github.com/ROCmSoftwarePlatform/rccl-tests.git
+cd rccl-tests
+make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.5a1 HIP_HOME=/opt/rocm/bin/hipcc RCCL_HOME=/home/amdautomation/liangyu/rccl/build
+```
+```shell
+mpirun --allow-run-as-root -tag-output -map-by ppr:8:node -bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_exclude lo,docker0 -mca coll_hcoll_enable 0 -x LD_PRELOAD=/rccl/build/librccl.so:$LD_PRELOAD -x NCCL_DEBUG=WARN /rccl-tests/build/all_gather_perf -b 1 -e 16G -f 2 -g 1 -c 1 -n 1000 -w 20 -G 1
 ```
