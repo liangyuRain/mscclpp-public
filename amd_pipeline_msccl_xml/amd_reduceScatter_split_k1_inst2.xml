@@ -1,4 +1,4 @@
-<algo name="pipeline schedule (k1,inst2)" proto="Simple" nchunksperloop="64" ngpus="32" coll="reduce_scatter" inplace="1" outofplace="0" minBytes="0" maxBytes="1099511627776" nchannels="31">
+<algo name="pipeline schedule (k1,inst2)" proto="Simple" nchunksperloop="64" ngpus="32" coll="reducescatter" inplace="1" outofplace="0" minBytes="0" maxBytes="1099511627776" nchannels="31">
   <gpu id="0" i_chunks="64" o_chunks="0" s_chunks="0">
     <tb id="0" send="-1" recv="4" chan="0">
       <!--RS, node0, root0, index0, chunks1, inst0-->
