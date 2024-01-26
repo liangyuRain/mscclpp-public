@@ -18,6 +18,8 @@ if __name__ == "__main__":
                 exe = "all_gather_perf"
             elif "allreduce" in fname:
                 exe = "all_reduce_perf"
+            elif "reduceScatter" in fname:
+                exe = "reduce_scatter_perf"
             else:
                 assert False
             xml_file = os.path.join(folder, fname)

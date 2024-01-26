@@ -1,0 +1,68 @@
+# nThreads: 1 nGpus: 1 nRanks: 1 minBytes: 256 maxBytes: 1073741824 step: 2(factor) warmupIters: 50 iters: 50 agg iters: 1 validation: 1 graph: 0
+#
+# Using devices
+#   Rank  0 Pid 992391 on mi200000003 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  1 Pid 992392 on mi200000003 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  2 Pid 992393 on mi200000003 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  3 Pid 992394 on mi200000003 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  4 Pid 992395 on mi200000003 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  5 Pid 992396 on mi200000003 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  6 Pid 992397 on mi200000003 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  7 Pid 992398 on mi200000003 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  8 Pid 992399 on mi200000003 device  8 [0009:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  9 Pid 992400 on mi200000003 device  9 [000a:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 10 Pid 992401 on mi200000003 device 10 [000b:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 11 Pid 992402 on mi200000003 device 11 [000c:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 12 Pid 992403 on mi200000003 device 12 [000d:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 13 Pid 992404 on mi200000003 device 13 [000e:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 14 Pid 992405 on mi200000003 device 14 [000f:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 15 Pid 992406 on mi200000003 device 15 [0010:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 16 Pid 456207 on mi200000002 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 17 Pid 456208 on mi200000002 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 18 Pid 456209 on mi200000002 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 19 Pid 456210 on mi200000002 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 20 Pid 456211 on mi200000002 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 21 Pid 456212 on mi200000002 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 22 Pid 456213 on mi200000002 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 23 Pid 456214 on mi200000002 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 24 Pid 456215 on mi200000002 device  8 [0009:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 25 Pid 456216 on mi200000002 device  9 [000a:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 26 Pid 456217 on mi200000002 device 10 [000b:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 27 Pid 456218 on mi200000002 device 11 [000c:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 28 Pid 456219 on mi200000002 device 12 [000d:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 29 Pid 456220 on mi200000002 device 13 [000e:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 30 Pid 456221 on mi200000002 device 14 [000f:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 31 Pid 456222 on mi200000002 device 15 [0010:00:00.0] AMD Instinct MI250X/MI250
+RCCL version 2.18.3+hip6.0 HEAD:2f6d59e+
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+           0             0     float     sum      -1     9.37    0.00    0.00      0     9.00    0.00    0.00      0
+         512             4     float     sum      -1    269.6    0.00    0.00      0    271.5    0.00    0.00      0
+        1024             8     float     sum      -1    270.6    0.00    0.00      0    270.8    0.00    0.00      0
+        2048            16     float     sum      -1    273.3    0.01    0.01      0    271.7    0.01    0.01      0
+        4096            32     float     sum      -1    273.9    0.01    0.01      0    274.3    0.01    0.01      0
+        8192            64     float     sum      -1    273.9    0.03    0.03      0    163.0    0.05    0.05      0
+       16384           128     float     sum      -1    276.3    0.06    0.06      0    162.4    0.10    0.10      0
+       32768           256     float     sum      -1    284.4    0.12    0.11      0    162.0    0.20    0.20      0
+       65536           512     float     sum      -1    281.4    0.23    0.23      0    164.1    0.40    0.39      0
+      131072          1024     float     sum      -1    399.9    0.33    0.32      0    163.9    0.80    0.77      0
+      262144          2048     float     sum      -1    299.7    0.87    0.85      0    163.4    1.60    1.55      0
+      524288          4096     float     sum      -1    346.2    1.51    1.47      0    165.1    3.18    3.08      0
+     1048576          8192     float     sum      -1    343.8    3.05    2.95      0    162.8    6.44    6.24      0
+     2097152         16384     float     sum      -1    363.4    5.77    5.59      0    174.5   12.02   11.64      0
+     4194304         32768     float     sum      -1    400.9   10.46   10.13      0    179.5   23.37   22.64      0
+     8388608         65536     float     sum      -1    407.8   20.57   19.93      0    210.2   39.92   38.67      0
+    16777216        131072     float     sum      -1    425.5   39.43   38.20      0    256.4   65.43   63.39      0
+    33554432        262144     float     sum      -1    575.9   58.27   56.45      0    359.0   93.48   90.56      0
+    67108864        524288     float     sum      -1    746.5   89.90   87.09      0    550.6  121.89  118.08      0
+   134217728       1048576     float     sum      -1   1176.4  114.09  110.53      0    917.6  146.27  141.70      0
+   268435456       2097152     float     sum      -1   2308.2  116.29  112.66      0   1653.4  162.35  157.28      0
+   536870912       4194304     float     sum      -1   4571.7  117.43  113.76      0   3134.3  171.29  165.93      0
+  1073741824       8388608     float     sum      -1   9099.9  117.99  114.31      0   6102.2  175.96  170.46      0
+# Errors with asterisks indicate errors that have exceeded the maximum threshold.
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 36.2483 
+#
+
