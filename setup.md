@@ -192,19 +192,21 @@ mpirun \
 
 # RCCL
 
+- use rocm 6.0.0 release version of rccl
 ```shell
 git clone https://github.com/ROCmSoftwarePlatform/rccl.git
 cd rccl
 mkdir build
 cd build
-CXX=/opt/rocm/bin/hipcc cmake -DCMAKE_PREFIX_PATH=/opt/rocm/ ..
+CXX=/opt/rocm-6.0.0/bin/hipcc cmake -DCMAKE_PREFIX_PATH=/opt/rocm-6.0.0/ ..
 make -j
 ```
 ```shell
 git clone https://github.com/ROCmSoftwarePlatform/rccl-tests.git
 cd rccl-tests
-make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.5a1/ HIP_HOME=/opt/rocm/bin/hipcc RCCL_HOME=/home/amdautomation/liangyu/rccl/build
+make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.5a1/ HIP_HOME=/opt/rocm-6.0.0/bin/hipcc RCCL_HOME=/home/amdautomation/liangyu/rccl/build
 ```
+- make sure rccl and rccl-tests are copied to remote servers
 ```shell
 mpirun --allow-run-as-root \
 -hostfile ~/hostfile -map-by ppr:16:node \
