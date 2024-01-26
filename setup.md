@@ -206,5 +206,15 @@ cd rccl-tests
 make MPI=1 MPI_HOME=/usr/mpi/gcc/openmpi-4.1.0rc5/ HIP_HOME=/opt/rocm/bin/hipcc RCCL_HOME=/root/rccl/build
 ```
 ```shell
-/usr/local/mpi/bin/mpirun --allow-run-as-root -tag-output -map-by ppr:16:node -bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_exclude lo,docker0 -mca coll_hcoll_enable 0 -x LD_PRELOAD=/root/rccl/build/librccl.so:$LD_PRELOAD -x NCCL_DEBUG=WARN /root/rccl-tests/build/all_gather_perf -b 1 -e 10G -f 2 -g 1 -c 1 -n 100 -w 20 -G 1
+mpirun --allow-run-as-root \
+-hostfile ~/hostfile -map-by ppr:16:node \
+--bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 \
+-x PATH -x LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH -x NCCL_SOCKET_IFNAME=eth0 \
+-x NCCL_DEBUG=WARN -x NCCL_DEBUG_SUBSYS=INIT,GRAPH -x HSA_FORCE_FINE_GRAIN_PCIE=1 \
+-x NCCL_MIN_NCHANNELS=32 \
+-x NCCL_IB_PCI_RELAXED_ORDERING=1 \
+-x NCCL_NET_GDR_LEVEL=3 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_IBEXT_DISABLE=1 \
+-x NCCL_PROTO=Simple \
+-x MSCCL_ALGO_DIR=/home/amdautomation/liangyu/rccl_run_schedule \
+/home/amdautomation/liangyu/rccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 50 -w 50 -c 1 -a 2
 ```
