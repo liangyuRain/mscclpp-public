@@ -1,0 +1,79 @@
+# nThreads: 1 nGpus: 1 nRanks: 1 minBytes: 256 maxBytes: 10737418240 step: 2(factor) warmupIters: 50 iters: 50 agg iters: 1 validation: 1 graph: 0
+#
+# Using devices
+#   Rank  0 Pid 362882 on mi200000003 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  1 Pid 362883 on mi200000003 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  2 Pid 362884 on mi200000003 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  3 Pid 362885 on mi200000003 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  4 Pid 362886 on mi200000003 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  5 Pid 362887 on mi200000003 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  6 Pid 362888 on mi200000003 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  7 Pid 362889 on mi200000003 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  8 Pid 362890 on mi200000003 device  8 [0009:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  9 Pid 362891 on mi200000003 device  9 [000a:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 10 Pid 362892 on mi200000003 device 10 [000b:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 11 Pid 362893 on mi200000003 device 11 [000c:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 12 Pid 362894 on mi200000003 device 12 [000d:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 13 Pid 362895 on mi200000003 device 13 [000e:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 14 Pid 362896 on mi200000003 device 14 [000f:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 15 Pid 362897 on mi200000003 device 15 [0010:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 16 Pid 255438 on mi200000002 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 17 Pid 255439 on mi200000002 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 18 Pid 255440 on mi200000002 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 19 Pid 255441 on mi200000002 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 20 Pid 255442 on mi200000002 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 21 Pid 255443 on mi200000002 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 22 Pid 255444 on mi200000002 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 23 Pid 255445 on mi200000002 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 24 Pid 255446 on mi200000002 device  8 [0009:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 25 Pid 255447 on mi200000002 device  9 [000a:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 26 Pid 255448 on mi200000002 device 10 [000b:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 27 Pid 255449 on mi200000002 device 11 [000c:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 28 Pid 255450 on mi200000002 device 12 [000d:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 29 Pid 255451 on mi200000002 device 13 [000e:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 30 Pid 255452 on mi200000002 device 14 [000f:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 31 Pid 255453 on mi200000002 device 15 [0010:00:00.0] AMD Instinct MI250X/MI250
+RCCL version 2.18.3+hip6.0 HEAD:2f6d59e+
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+           0             0     float    none      -1     9.89    0.00    0.00      0     9.70    0.00    0.00      0
+         512             4     float    none      -1    273.4    0.00    0.00      0    273.7    0.00    0.00      0
+        1024             8     float    none      -1    273.4    0.00    0.00      0    270.2    0.00    0.00      0
+        2048            16     float    none      -1    274.0    0.01    0.01      0    274.8    0.01    0.01      0
+        4096            32     float    none      -1    272.0    0.02    0.01      0    273.8    0.01    0.01      0
+        8192            64     float    none      -1    272.5    0.03    0.03      0    274.6    0.03    0.03      0
+       16384           128     float    none      -1    276.4    0.06    0.06      0    275.0    0.06    0.06      0
+       32768           256     float    none      -1    277.6    0.12    0.11      0    202.1    0.16    0.16      0
+       65536           512     float    none      -1    282.8    0.23    0.22      0    204.5    0.32    0.31      0
+      131072          1024     float    none      -1    294.6    0.44    0.43      0    204.5    0.64    0.62      0
+      262144          2048     float    none      -1    301.3    0.87    0.84      0    207.2    1.27    1.23      0
+      524288          4096     float    none      -1    346.4    1.51    1.47      0    210.7    2.49    2.41      0
+     1048576          8192     float    none      -1    350.4    2.99    2.90      0    212.7    4.93    4.78      0
+     2097152         16384     float    none      -1    367.2    5.71    5.53      0    223.7    9.37    9.08      0
+     4194304         32768     float    none      -1    371.1   11.30   10.95      0    271.2   15.47   14.99      0
+     8388608         65536     float    none      -1    387.0   21.67   21.00      0    296.9   28.25   27.37      0
+    16777216        131072     float    none      -1    436.0   38.48   37.28      0    409.3   40.99   39.71      0
+    33554432        262144     float    none      -1    581.1   57.74   55.93      0    625.8   53.62   51.94      0
+:0:rocdevice.cpp            :2726: 36100222376 us: [pid:255453 tid:0x14bfd59ff700] Callback: Queue 0x14afc8200000 aborting with error : HSA_STATUS_ERROR_MEMORY_APERTURE_VIOLATION: The agent attempted to access memory beyond the largest legal address. code: 0x29
+[mi200000002:255453] *** Process received signal ***
+[mi200000002:255453] Signal: Aborted (6)
+[mi200000002:255453] Signal code:  (-6)
+[mi200000002:255453] [ 0] /lib/x86_64-linux-gnu/libpthread.so.0(+0x14420)[0x14bfdf84f420]
+[mi200000002:255453] [ 1] /lib/x86_64-linux-gnu/libc.so.6(gsignal+0xcb)[0x14bfdf68c00b]
+[mi200000002:255453] [ 2] /lib/x86_64-linux-gnu/libc.so.6(abort+0x12b)[0x14bfdf66b859]
+[mi200000002:255453] [ 3] /opt/rocm/lib/libamdhip64.so.6(+0x32bf55)[0x14bfdfed7f55]
+[mi200000002:255453] [ 4] /opt/rocm/lib/libhsa-runtime64.so.1(+0x462bc)[0x14bfe18472bc]
+[mi200000002:255453] [ 5] /opt/rocm/lib/libhsa-runtime64.so.1(+0x7047c)[0x14bfe187147c]
+[mi200000002:255453] [ 6] /opt/rocm/lib/libhsa-runtime64.so.1(+0x28d8b)[0x14bfe1829d8b]
+[mi200000002:255453] [ 7] /lib/x86_64-linux-gnu/libpthread.so.0(+0x8609)[0x14bfdf843609]
+[mi200000002:255453] [ 8] /lib/x86_64-linux-gnu/libc.so.6(clone+0x43)[0x14bfdf768353]
+[mi200000002:255453] *** End of error message ***
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun noticed that process rank 31 with PID 255453 on node 10.8 exited on signal 6 (Aborted).
+--------------------------------------------------------------------------

@@ -1,0 +1,86 @@
+# nThreads: 1 nGpus: 1 nRanks: 1 minBytes: 256 maxBytes: 10737418240 step: 2(factor) warmupIters: 50 iters: 50 agg iters: 1 validation: 1 graph: 0
+#
+# Using devices
+#   Rank  0 Pid 364125 on mi200000003 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  1 Pid 364126 on mi200000003 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  2 Pid 364127 on mi200000003 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  3 Pid 364128 on mi200000003 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  4 Pid 364129 on mi200000003 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  5 Pid 364130 on mi200000003 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  6 Pid 364131 on mi200000003 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  7 Pid 364132 on mi200000003 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  8 Pid 364133 on mi200000003 device  8 [0009:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  9 Pid 364134 on mi200000003 device  9 [000a:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 10 Pid 364135 on mi200000003 device 10 [000b:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 11 Pid 364136 on mi200000003 device 11 [000c:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 12 Pid 364137 on mi200000003 device 12 [000d:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 13 Pid 364138 on mi200000003 device 13 [000e:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 14 Pid 364139 on mi200000003 device 14 [000f:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 15 Pid 364140 on mi200000003 device 15 [0010:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 16 Pid 257037 on mi200000002 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 17 Pid 257038 on mi200000002 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 18 Pid 257039 on mi200000002 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 19 Pid 257040 on mi200000002 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 20 Pid 257041 on mi200000002 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 21 Pid 257042 on mi200000002 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 22 Pid 257043 on mi200000002 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 23 Pid 257044 on mi200000002 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 24 Pid 257045 on mi200000002 device  8 [0009:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 25 Pid 257046 on mi200000002 device  9 [000a:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 26 Pid 257047 on mi200000002 device 10 [000b:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 27 Pid 257048 on mi200000002 device 11 [000c:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 28 Pid 257049 on mi200000002 device 12 [000d:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 29 Pid 257050 on mi200000002 device 13 [000e:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 30 Pid 257051 on mi200000002 device 14 [000f:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 31 Pid 257052 on mi200000002 device 15 [0010:00:00.0] AMD Instinct MI250X/MI250
+RCCL version 2.18.3+hip6.0 HEAD:2f6d59e+
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+           0             0     float    none      -1     9.87    0.00    0.00      0     9.54    0.00    0.00      0
+         512             4     float    none      -1    273.6    0.00    0.00      0    276.3    0.00    0.00      0
+        1024             8     float    none      -1    276.0    0.00    0.00      0    275.4    0.00    0.00      0
+        2048            16     float    none      -1    276.9    0.01    0.01      0    275.4    0.01    0.01      0
+        4096            32     float    none      -1    273.5    0.01    0.01      0    273.2    0.01    0.01      0
+        8192            64     float    none      -1    274.0    0.03    0.03      0    273.7    0.03    0.03      0
+       16384           128     float    none      -1    274.5    0.06    0.06      0    274.8    0.06    0.06      0
+       32768           256     float    none      -1    282.2    0.12    0.11      0    206.4    0.16    0.15      0
+       65536           512     float    none      -1    285.4    0.23    0.22      0    204.4    0.32    0.31      0
+      131072          1024     float    none      -1    296.0    0.44    0.43      0    205.2    0.64    0.62      0
+      262144          2048     float    none      -1    303.1    0.86    0.84      0    208.7    1.26    1.22      0
+      524288          4096     float    none      -1    355.8    1.47    1.43      0    209.4    2.50    2.43      0
+     1048576          8192     float    none      -1    358.2    2.93    2.84      0    211.6    4.96    4.80      0
+     2097152         16384     float    none      -1    371.2    5.65    5.47      0    223.5    9.38    9.09      0
+     4194304         32768     float    none      -1    373.6   11.23   10.88      0    237.2   17.68   17.13      0
+     8388608         65536     float    none      -1    383.5   21.87   21.19      0    302.4   27.74   26.87      0
+    16777216        131072     float    none      -1    470.4   35.67   34.55      0    409.7   40.95   39.67      0
+    33554432        262144     float    none      -1    553.3   60.64   58.74      0    627.6   53.46   51.79      0
+    67108864        524288     float    none      -1    791.2   84.82   82.17      0   1052.2   63.78   61.79      0
+   134217728       1048576     float    none      -1   1208.4  111.07  107.60      0   1893.1   70.90   68.68      0
+   268435456       2097152     float    none      -1   2053.9  130.69  126.61      0   3519.1   76.28   73.90      0
+   536870912       4194304     float    none      -1   3526.0  152.26  147.50      0   6826.8   78.64   76.18      0
+  1073741824       8388608     float    none      -1   6508.4  164.98  159.82      0    13553   79.23   76.75      0
+  2147483648      16777216     float    none      -1    12236  175.51  170.03      0    27125   79.17   76.69      0
+  4294967296      33554432     float    none      -1    24074  178.41  172.83      0    54112   79.37   76.89      0
+:0:rocdevice.cpp            :2726: 36152618090 us: [pid:257047 tid:0x1476e95ff700] Callback: Queue 0x1466dc200000 aborting with error : HSA_STATUS_ERROR_MEMORY_APERTURE_VIOLATION: The agent attempted to access memory beyond the largest legal address. code: 0x29
+[mi200000002:257047] *** Process received signal ***
+[mi200000002:257047] Signal: Aborted (6)
+[mi200000002:257047] Signal code:  (-6)
+[mi200000002:257047] [ 0] /lib/x86_64-linux-gnu/libpthread.so.0(+0x14420)[0x1476f34d7420]
+[mi200000002:257047] [ 1] /lib/x86_64-linux-gnu/libc.so.6(gsignal+0xcb)[0x1476f331400b]
+[mi200000002:257047] [ 2] /lib/x86_64-linux-gnu/libc.so.6(abort+0x12b)[0x1476f32f3859]
+[mi200000002:257047] [ 3] /opt/rocm/lib/libamdhip64.so.6(+0x32bf55)[0x1476f3b5ff55]
+[mi200000002:257047] [ 4] /opt/rocm/lib/libhsa-runtime64.so.1(+0x462bc)[0x1476f54cf2bc]
+[mi200000002:257047] [ 5] /opt/rocm/lib/libhsa-runtime64.so.1(+0x7047c)[0x1476f54f947c]
+[mi200000002:257047] [ 6] /opt/rocm/lib/libhsa-runtime64.so.1(+0x28d8b)[0x1476f54b1d8b]
+[mi200000002:257047] [ 7] /lib/x86_64-linux-gnu/libpthread.so.0(+0x8609)[0x1476f34cb609]
+[mi200000002:257047] [ 8] /lib/x86_64-linux-gnu/libc.so.6(clone+0x43)[0x1476f33f0353]
+[mi200000002:257047] *** End of error message ***
+--------------------------------------------------------------------------
+Primary job  terminated normally, but 1 process returned
+a non-zero exit code. Per user-direction, the job has been aborted.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+mpirun noticed that process rank 26 with PID 257047 on node 10.8 exited on signal 6 (Aborted).
+--------------------------------------------------------------------------
