@@ -1,0 +1,67 @@
+(base) amdautomation@mi200000003:~/liangyu/mscclpp-public$ mpirun --allow-run-as-root \
+> -hostfile ~/hostfile -map-by ppr:8:node \
+> --bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 \
+> -x PATH -x LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH -x NCCL_SOCKET_IFNAME=eth0 \
+> -x LD_PRELOAD=/home/amdautomation/liangyu/rccl/build/librccl.so:$LD_PRELOAD \
+> -x HIP_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+> -x NCCL_DEBUG=WARN -x NCCL_DEBUG_SUBSYS=INIT,GRAPH -x HSA_FORCE_FINE_GRAIN_PCIE=1 \
+> -x NCCL_MIN_NCHANNELS=32 \
+> -x NCCL_IB_PCI_RELAXED_ORDERING=1 \
+> -x NCCL_NET_GDR_LEVEL=3 -x CUDA_DEVICE_ORDER=PCI_BUS_ID -x NCCL_IBEXT_DISABLE=1 \
+> -x NCCL_PROTO=Simple \
+> -x RCCL_MSCCL_FORCE_ENABLE=1 \
+> /home/amdautomation/liangyu/rccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 50 -w 50 -c 1 -a 2
+# nThreads: 1 nGpus: 1 nRanks: 1 minBytes: 256 maxBytes: 10737418240 step: 2(factor) warmupIters: 50 iters: 50 agg iters: 1 validation: 1 graph: 0
+#
+# Using devices
+#   Rank  0 Pid 381269 on mi200000003 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  1 Pid 381270 on mi200000003 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  2 Pid 381271 on mi200000003 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  3 Pid 381272 on mi200000003 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  4 Pid 381273 on mi200000003 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  5 Pid 381274 on mi200000003 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  6 Pid 381275 on mi200000003 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  7 Pid 381276 on mi200000003 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  8 Pid 271120 on mi200000002 device  0 [0001:00:00.0] AMD Instinct MI250X/MI250
+#   Rank  9 Pid 271121 on mi200000002 device  1 [0002:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 10 Pid 271122 on mi200000002 device  2 [0003:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 11 Pid 271123 on mi200000002 device  3 [0004:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 12 Pid 271124 on mi200000002 device  4 [0005:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 13 Pid 271125 on mi200000002 device  5 [0006:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 14 Pid 271126 on mi200000002 device  6 [0007:00:00.0] AMD Instinct MI250X/MI250
+#   Rank 15 Pid 271127 on mi200000002 device  7 [0008:00:00.0] AMD Instinct MI250X/MI250
+RCCL version 2.18.3+hip6.0 HEAD:2f6d59e+
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+         256             4     float    none      -1    133.9    0.00    0.00      0    133.1    0.00    0.00      0
+         512             8     float    none      -1    133.0    0.00    0.00      0    132.5    0.00    0.00      0
+        1024            16     float    none      -1    132.2    0.01    0.01      0    61.40    0.02    0.02      0
+        2048            32     float    none      -1    133.0    0.02    0.01      0    55.59    0.04    0.03      0
+        4096            64     float    none      -1    133.1    0.03    0.03      0    51.19    0.08    0.08      0
+        8192           128     float    none      -1    133.5    0.06    0.06      0    52.92    0.15    0.15      0
+       16384           256     float    none      -1    135.7    0.12    0.11      0    56.53    0.29    0.27      0
+       32768           512     float    none      -1    138.2    0.24    0.22      0    64.00    0.51    0.48      0
+       65536          1024     float    none      -1    149.1    0.44    0.41      0    81.12    0.81    0.76      0
+      131072          2048     float    none      -1    162.6    0.81    0.76      0    111.6    1.17    1.10      0
+      262144          4096     float    none      -1    233.0    1.13    1.05      0    274.5    0.95    0.90      0
+      524288          8192     float    none      -1    400.7    1.31    1.23      0    406.9    1.29    1.21      0
+     1048576         16384     float    none      -1    439.0    2.39    2.24      0    431.4    2.43    2.28      0
+     2097152         32768     float    none      -1    437.8    4.79    4.49      0    432.5    4.85    4.55      0
+     4194304         65536     float    none      -1    444.7    9.43    8.84      0    443.2    9.46    8.87      0
+     8388608        131072     float    none      -1    471.4   17.79   16.68      0    467.5   17.95   16.82      0
+    16777216        262144     float    none      -1    526.1   31.89   29.89      0    522.4   32.11   30.11      0
+    33554432        524288     float    none      -1    728.9   46.03   43.16      0    728.0   46.09   43.21      0
+    67108864       1048576     float    none      -1   1511.2   44.41   41.63      0   1511.1   44.41   41.64      0
+   134217728       2097152     float    none      -1   3014.0   44.53   41.75      0   3006.5   44.64   41.85      0
+   268435456       4194304     float    none      -1   6040.7   44.44   41.66      0   6011.2   44.66   41.86      0
+   536870912       8388608     float    none      -1    12088   44.41   41.64      0    11991   44.77   41.97      0
+  1073741824      16777216     float    none      -1    24042   44.66   41.87      0    23889   44.95   42.14      0
+  2147483648      33554432     float    none      -1    47096   45.60   42.75      0    46843   45.84   42.98      0
+  4294967296      67108864     float    none      -1    93266   46.05   43.17      0    93513   45.93   43.06      0
+  8589934592     134217728     float    none      -1   185500   46.31   43.41      0   185297   46.36   43.46      0
+# Errors with asterisks indicate errors that have exceeded the maximum threshold.
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 17.2476 
+#
