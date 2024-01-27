@@ -1,0 +1,51 @@
+# nThread 1 nGpus 1 minBytes 256 maxBytes 1073741824 step: 2(factor) warmup iters: 100 iters: 100 agg iters: 1 validation: 0 graph: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid 4175867 on vmss-a100000004 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  1 Group  0 Pid 4175868 on vmss-a100000004 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  2 Group  0 Pid 4175869 on vmss-a100000004 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  3 Group  0 Pid 4175870 on vmss-a100000004 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  4 Group  0 Pid 4175871 on vmss-a100000004 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  5 Group  0 Pid 4175872 on vmss-a100000004 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  6 Group  0 Pid 4175873 on vmss-a100000004 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  7 Group  0 Pid 4175874 on vmss-a100000004 device  7 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  8 Group  0 Pid 1648649 on vmss-a100000005 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  9 Group  0 Pid 1648650 on vmss-a100000005 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 10 Group  0 Pid 1648651 on vmss-a100000005 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 11 Group  0 Pid 1648652 on vmss-a100000005 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 12 Group  0 Pid 1648653 on vmss-a100000005 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 13 Group  0 Pid 1648654 on vmss-a100000005 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 14 Group  0 Pid 1648655 on vmss-a100000005 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 15 Group  0 Pid 1648656 on vmss-a100000005 device  7 [0x00] NVIDIA A100-SXM4-80GB
+NCCL version 2.12.12.MSCCL.0.7.4+cuda12.0
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+         256             4     float     sum      -1    41.12    0.01    0.01    N/A    170.0    0.00    0.00    N/A
+         512             8     float     sum      -1    40.27    0.01    0.01    N/A    88.96    0.01    0.01    N/A
+        1024            16     float     sum      -1    40.23    0.03    0.02    N/A    89.37    0.01    0.01    N/A
+        2048            32     float     sum      -1    40.15    0.05    0.05    N/A    89.53    0.02    0.02    N/A
+        4096            64     float     sum      -1    40.00    0.10    0.10    N/A    88.97    0.05    0.04    N/A
+        8192           128     float     sum      -1    40.79    0.20    0.19    N/A    89.13    0.09    0.09    N/A
+       16384           256     float     sum      -1    42.49    0.39    0.36    N/A    88.85    0.18    0.17    N/A
+       32768           512     float     sum      -1    46.48    0.70    0.66    N/A    89.19    0.37    0.34    N/A
+       65536          1024     float     sum      -1    50.93    1.29    1.21    N/A    92.02    0.71    0.67    N/A
+      131072          2048     float     sum      -1    69.63    1.88    1.76    N/A    96.78    1.35    1.27    N/A
+      262144          4096     float     sum      -1    76.25    3.44    3.22    N/A    119.5    2.19    2.06    N/A
+      524288          8192     float     sum      -1    178.3    2.94    2.76    N/A    120.8    4.34    4.07    N/A
+     1048576         16384     float     sum      -1    156.8    6.69    6.27    N/A    134.8    7.78    7.29    N/A
+     2097152         32768     float     sum      -1    161.7   12.97   12.16    N/A    147.1   14.26   13.37    N/A
+     4194304         65536     float     sum      -1    166.5   25.20   23.62    N/A    175.7   23.87   22.38    N/A
+     8388608        131072     float     sum      -1    194.2   43.19   40.49    N/A    242.6   34.58   32.42    N/A
+    16777216        262144     float     sum      -1    253.0   66.30   62.16    N/A    296.5   56.59   53.05    N/A
+    33554432        524288     float     sum      -1    351.1   95.56   89.58    N/A    376.0   89.25   83.67    N/A
+    67108864       1048576     float     sum      -1    636.6  105.42   98.83    N/A    558.7  120.12  112.61    N/A
+   134217728       2097152     float     sum      -1   1205.3  111.35  104.39    N/A    876.4  153.15  143.58    N/A
+   268435456       4194304     float     sum      -1   2342.9  114.57  107.41    N/A   1503.2  178.58  167.41    N/A
+   536870912       8388608     float     sum      -1   4614.6  116.34  109.07    N/A   2771.0  193.75  181.64    N/A
+  1073741824      16777216     float     sum      -1   9138.2  117.50  110.16    N/A   5328.0  201.53  188.93    N/A
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 38.9043 
+#
+
