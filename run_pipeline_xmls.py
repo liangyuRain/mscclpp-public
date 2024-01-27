@@ -7,10 +7,19 @@ if __name__ == "__main__":
     file_list = sorted(os.listdir(folder))
     for idx, fname in enumerate(file_list):
         for buff_size in [2 ** n * 1024 for n in range(6, 14)]:
-            print(f"\nrunning {idx} / {len(file_list)}, buffsize={buff_size}\n", flush=True)
+            print(f"\nrunning {idx} / {len(file_list)}, fname={fname}, buffsize={buff_size}\n", flush=True)
             if not fname.endswith(".xml"):
                 continue
+            if "allgather" in fname:
+                exe = "all_gather_perf"
+            elif "allreduce" in fname:
+                exe = "all_reduce_perf"
+            elif "reduceScatter" in fname:
+                exe = "reduce_scatter_perf"
+            else:
+                assert False
             xml_file = os.path.join(folder, fname)
+            end_size = "10G" if buff_size >= 2 ** 20 else "1G"
             cmd = (
 f"""mpirun \
 --mca btl_tcp_if_include eth0 \
@@ -30,7 +39,7 @@ f"""mpirun \
 -x NCCL_TOPO_FILE=/home/azureuser/liangyu/topo.xml \
 -x MSCCL_XML_FILES={xml_file} \
 -x NCCL_BUFFSIZE={buff_size} \
-/home/azureuser/liangyu/nccl-tests/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 100 -c 0 -a 2"""
+/home/azureuser/liangyu/nccl-tests/build/{exe} -b 256 -e {end_size} -f 2 -g 1 -z 0 -n 100 -w 100 -c 0 -a 2"""
             )
             res_file = os.path.join(folder, "pipeline_results", fname + f"buff{buff_size}.txt")
             os.system(f"stdbuf --output=L {cmd} 2>&1 | tee {res_file}")
