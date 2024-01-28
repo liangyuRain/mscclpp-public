@@ -17,7 +17,7 @@ if __name__ == "__main__":
             assert "allreduce" in fname
             exe = "all_reduce_perf"
 
-            is_half = "half" in fname
+            is_half = "8_per_node" in fname
 
             start_size = 256
             end_size = "10G" if buff_size >= 2 ** 20 else "1G"
