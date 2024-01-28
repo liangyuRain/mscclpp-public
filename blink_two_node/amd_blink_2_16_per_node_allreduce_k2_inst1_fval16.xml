@@ -1,0 +1,778 @@
+<algo name="pipeline schedule (k2,inst1)" proto="Simple" nchunksperloop="2" ngpus="32" coll="allreduce" inplace="1" outofplace="0" minBytes="0" maxBytes="1099511627776" nchannels="2">
+  <gpu id="0" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="16" chan="0">
+      <!--RS, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="-1" recv="8" chan="0">
+      <!--RS, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="2" send="-1" recv="4" chan="0">
+      <!--RS, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="1" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="3" send="1" recv="1" chan="0">
+      <!--ROOT, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="4" send="4" recv="-1" chan="0">
+      <!--AG, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="5" send="8" recv="-1" chan="0">
+      <!--AG, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="6" send="16" recv="-1" chan="0">
+      <!--AG, node0, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="7" send="-1" recv="8" chan="1">
+      <!--RS, node0, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="8" send="-1" recv="4" chan="1">
+      <!--RS, node0, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="7" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="9" send="1" recv="1" chan="1">
+      <!--ROOT, node0, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="8" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="10" send="4" recv="-1" chan="1">
+      <!--AG, node0, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="9" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="11" send="8" recv="-1" chan="1">
+      <!--AG, node0, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="9" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="1" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="17" chan="0">
+      <!--RS, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="-1" recv="10" chan="0">
+      <!--RS, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="2" send="-1" recv="9" chan="0">
+      <!--RS, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="1" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="3" send="0" recv="5" chan="0">
+      <!--RS, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="5" recv="0" chan="0">
+      <!--AG, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="5" send="9" recv="-1" chan="0">
+      <!--AG, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="6" send="10" recv="-1" chan="0">
+      <!--AG, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="7" send="17" recv="-1" chan="0">
+      <!--AG, node1, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="8" send="-1" recv="10" chan="1">
+      <!--RS, node1, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="9" send="-1" recv="5" chan="1">
+      <!--RS, node1, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="8" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="10" send="0" recv="9" chan="1">
+      <!--RS, node1, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="9" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="11" send="9" recv="0" chan="1">
+      <!--AG, node1, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="12" send="5" recv="-1" chan="1">
+      <!--AG, node1, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="11" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="13" send="10" recv="-1" chan="1">
+      <!--AG, node1, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="11" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="2" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="9" recv="18" chan="0">
+      <!--RS, node2, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="18" recv="9" chan="0">
+      <!--AG, node2, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="9" recv="-1" chan="1">
+      <!--RS, node2, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="9" chan="1">
+      <!--AG, node2, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="3" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="7" recv="19" chan="0">
+      <!--RS, node3, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="19" recv="7" chan="0">
+      <!--AG, node3, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="7" recv="-1" chan="1">
+      <!--RS, node3, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="7" chan="1">
+      <!--AG, node3, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="4" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="20" chan="0">
+      <!--RS, node4, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="0" recv="6" chan="0">
+      <!--RS, node4, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="6" recv="0" chan="0">
+      <!--AG, node4, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="20" recv="-1" chan="0">
+      <!--AG, node4, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="0" recv="6" chan="1">
+      <!--RS, node4, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="6" recv="0" chan="1">
+      <!--AG, node4, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="5" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="21" chan="0">
+      <!--RS, node5, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="1" recv="7" chan="0">
+      <!--RS, node5, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="7" recv="1" chan="0">
+      <!--AG, node5, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="21" recv="-1" chan="0">
+      <!--AG, node5, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="1" recv="7" chan="1">
+      <!--RS, node5, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="7" recv="1" chan="1">
+      <!--AG, node5, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="6" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="4" recv="22" chan="0">
+      <!--RS, node6, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="22" recv="4" chan="0">
+      <!--AG, node6, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="4" recv="-1" chan="1">
+      <!--RS, node6, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="4" chan="1">
+      <!--AG, node6, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="7" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="23" chan="0">
+      <!--RS, node7, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="5" recv="3" chan="0">
+      <!--RS, node7, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="3" recv="5" chan="0">
+      <!--AG, node7, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="23" recv="-1" chan="0">
+      <!--AG, node7, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="5" recv="3" chan="1">
+      <!--RS, node7, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="3" recv="5" chan="1">
+      <!--AG, node7, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="8" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="24" chan="0">
+      <!--RS, node8, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="0" recv="12" chan="0">
+      <!--RS, node8, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="12" recv="0" chan="0">
+      <!--AG, node8, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="24" recv="-1" chan="0">
+      <!--AG, node8, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="0" recv="12" chan="1">
+      <!--RS, node8, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="12" recv="0" chan="1">
+      <!--AG, node8, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="9" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="25" chan="0">
+      <!--RS, node9, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <!--RS, node9, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="2" send="1" recv="13" chan="0">
+      <!--RS, node9, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="1" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="3" send="13" recv="1" chan="0">
+      <!--AG, node9, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="4" send="2" recv="-1" chan="0">
+      <!--AG, node9, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="5" send="25" recv="-1" chan="0">
+      <!--AG, node9, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="6" send="-1" recv="2" chan="1">
+      <!--RS, node9, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="7" send="1" recv="13" chan="1">
+      <!--RS, node9, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="6" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="8" send="13" recv="1" chan="1">
+      <!--AG, node9, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="9" send="2" recv="-1" chan="1">
+      <!--AG, node9, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="8" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="10" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="26" chan="0">
+      <!--RS, node10, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="-1" recv="14" chan="0">
+      <!--RS, node10, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="2" send="1" recv="11" chan="0">
+      <!--RS, node10, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="1" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="3" send="11" recv="1" chan="0">
+      <!--AG, node10, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="4" send="14" recv="-1" chan="0">
+      <!--AG, node10, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="5" send="26" recv="-1" chan="0">
+      <!--AG, node10, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="6" send="-1" recv="14" chan="1">
+      <!--RS, node10, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="7" send="1" recv="11" chan="1">
+      <!--RS, node10, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="6" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="8" send="11" recv="1" chan="1">
+      <!--AG, node10, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="9" send="14" recv="-1" chan="1">
+      <!--AG, node10, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="8" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="11" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="10" recv="27" chan="0">
+      <!--RS, node11, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="27" recv="10" chan="0">
+      <!--AG, node11, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="10" recv="-1" chan="1">
+      <!--RS, node11, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="10" chan="1">
+      <!--AG, node11, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="12" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="8" recv="28" chan="0">
+      <!--RS, node12, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="28" recv="8" chan="0">
+      <!--AG, node12, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="8" recv="-1" chan="1">
+      <!--RS, node12, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="8" chan="1">
+      <!--AG, node12, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="13" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="-1" recv="15" chan="0">
+      <!--RS, node13, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="1" send="9" recv="29" chan="0">
+      <!--RS, node13, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="0" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="2" send="29" recv="9" chan="0">
+      <!--AG, node13, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="15" recv="-1" chan="0">
+      <!--AG, node13, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="9" recv="15" chan="1">
+      <!--RS, node13, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="5" send="15" recv="9" chan="1">
+      <!--AG, node13, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="14" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="10" recv="30" chan="0">
+      <!--RS, node14, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="30" recv="10" chan="0">
+      <!--AG, node14, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="10" recv="-1" chan="1">
+      <!--RS, node14, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="10" chan="1">
+      <!--AG, node14, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="15" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="13" recv="-1" chan="0">
+      <!--RS, node15, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="13" chan="0">
+      <!--AG, node15, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="13" recv="31" chan="1">
+      <!--RS, node15, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="31" recv="13" chan="1">
+      <!--AG, node15, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="16" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="0" recv="-1" chan="0">
+      <!--RS, node16, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="0" chan="0">
+      <!--AG, node16, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="17" recv="-1" chan="0">
+      <!--RS, node16, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="17" chan="0">
+      <!--AG, node16, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="17" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="1" recv="-1" chan="0">
+      <!--RS, node17, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="1" chan="0">
+      <!--AG, node17, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="26" recv="16" chan="0">
+      <!--RS, node17, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="16" recv="26" chan="0">
+      <!--AG, node17, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="18" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="2" recv="-1" chan="0">
+      <!--RS, node18, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="2" chan="0">
+      <!--AG, node18, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="19" recv="22" chan="1">
+      <!--RS, node18, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="22" recv="19" chan="1">
+      <!--AG, node18, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="19" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="3" recv="-1" chan="0">
+      <!--RS, node19, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="3" chan="0">
+      <!--AG, node19, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="23" chan="0">
+      <!--RS, node19, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="27" recv="18" chan="1">
+      <!--RS, node19, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="18" recv="27" chan="1">
+      <!--AG, node19, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="5" send="23" recv="-1" chan="0">
+      <!--AG, node19, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="20" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="4" recv="-1" chan="0">
+      <!--RS, node20, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="4" chan="0">
+      <!--AG, node20, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="22" recv="-1" chan="1">
+      <!--RS, node20, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="22" chan="1">
+      <!--AG, node20, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="21" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="5" recv="-1" chan="0">
+      <!--RS, node21, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="5" chan="0">
+      <!--AG, node21, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="23" recv="-1" chan="0">
+      <!--RS, node21, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="23" chan="0">
+      <!--AG, node21, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="22" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="6" recv="-1" chan="0">
+      <!--RS, node22, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="6" chan="0">
+      <!--AG, node22, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="18" recv="20" chan="1">
+      <!--RS, node22, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="20" recv="18" chan="1">
+      <!--AG, node22, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="23" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="7" recv="-1" chan="0">
+      <!--RS, node23, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="7" chan="0">
+      <!--AG, node23, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="19" recv="21" chan="0">
+      <!--RS, node23, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="21" recv="19" chan="0">
+      <!--AG, node23, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="24" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="8" recv="-1" chan="0">
+      <!--RS, node24, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="8" chan="0">
+      <!--AG, node24, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="25" recv="-1" chan="1">
+      <!--RS, node24, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="25" chan="1">
+      <!--AG, node24, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="25" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="9" recv="-1" chan="0">
+      <!--RS, node25, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="9" chan="0">
+      <!--AG, node25, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="29" recv="24" chan="1">
+      <!--RS, node25, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="24" recv="29" chan="1">
+      <!--AG, node25, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="26" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="10" recv="-1" chan="0">
+      <!--RS, node26, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="10" chan="0">
+      <!--AG, node26, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="27" recv="17" chan="0">
+      <!--RS, node26, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="17" recv="27" chan="0">
+      <!--AG, node26, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="27" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="11" recv="-1" chan="0">
+      <!--RS, node27, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="11" chan="0">
+      <!--AG, node27, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="26" chan="0">
+      <!--RS, node27, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="31" recv="19" chan="1">
+      <!--RS, node27, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="19" recv="31" chan="1">
+      <!--AG, node27, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="5" send="26" recv="-1" chan="0">
+      <!--AG, node27, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="28" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="12" recv="-1" chan="0">
+      <!--RS, node28, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="12" chan="0">
+      <!--AG, node28, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="29" recv="-1" chan="0">
+      <!--RS, node28, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="29" chan="0">
+      <!--AG, node28, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="29" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="13" recv="31" chan="0">
+      <!--RS, node29, root0, index0, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="31" recv="13" chan="0">
+      <!--AG, node29, root0, index0, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="28" chan="0">
+      <!--RS, node29, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="31" recv="25" chan="1">
+      <!--RS, node29, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="2" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="4" send="25" recv="31" chan="1">
+      <!--AG, node29, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="5" send="28" recv="-1" chan="0">
+      <!--AG, node29, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="4" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="30" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="14" recv="-1" chan="0">
+      <!--RS, node30, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="14" chan="0">
+      <!--AG, node30, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="31" recv="-1" chan="0">
+      <!--RS, node30, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="3" send="-1" recv="31" chan="0">
+      <!--AG, node30, root0, index1, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+  </gpu>
+  <gpu id="31" i_chunks="0" o_chunks="2" s_chunks="0">
+    <tb id="0" send="29" recv="-1" chan="0">
+      <!--RS, node31, root0, index0, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="1" send="-1" recv="29" chan="0">
+      <!--AG, node31, root0, index0, chunks1, inst0-->
+      <step s="0" type="r" srcbuf="o" srcoff="0" dstbuf="o" dstoff="0" cnt="1" depid="-1" deps="-1" hasdep="0"/>
+    </tb>
+    <tb id="2" send="-1" recv="30" chan="0">
+      <!--RS, node31, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="3" send="-1" recv="29" chan="1">
+      <!--RS, node31, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrc" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="2" deps="0" hasdep="1"/>
+    </tb>
+    <tb id="4" send="15" recv="27" chan="1">
+      <!--RS, node31, root0, index1, chunks1, inst0-->
+      <step s="0" type="rrs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="3" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="5" send="27" recv="15" chan="1">
+      <!--AG, node31, root0, index1, chunks1, inst0-->
+      <step s="0" type="rcs" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="-1" deps="-1" hasdep="1"/>
+    </tb>
+    <tb id="6" send="29" recv="-1" chan="1">
+      <!--AG, node31, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="5" deps="0" hasdep="0"/>
+    </tb>
+    <tb id="7" send="30" recv="-1" chan="0">
+      <!--AG, node31, root0, index1, chunks1, inst0-->
+      <step s="0" type="s" srcbuf="o" srcoff="1" dstbuf="o" dstoff="1" cnt="1" depid="5" deps="0" hasdep="0"/>
+    </tb>
+  </gpu>
+</algo>
