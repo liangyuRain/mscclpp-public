@@ -3,7 +3,7 @@ import os
 if __name__ == "__main__":
     folder = "/home/amdautomation/liangyu/mscclpp-public/blink_two_node"
     assert os.path.exists(folder)
-    assert os.path.exists(os.path.join(folder, "amd_blink_results"))
+    assert os.path.exists(os.path.join(folder, "amd_blink_two_node_results"))
     file_list = sorted(os.listdir(folder))
 
     rm_cmd = "rm /home/amdautomation/liangyu/rccl_run_schedule/*"
@@ -41,7 +41,7 @@ f"""mpirun --allow-run-as-root \
 /home/amdautomation/liangyu/rccl-tests/build/{exe} -b {start_size} -e {end_size} -f 2 -g 1 -z 0 -n 50 -w 50 -c 1 -a 2"""
             )
             print(cmd)
-            res_file = os.path.join(folder, "amd_blink_results", fname + f"buff{buff_size}.txt")
+            res_file = os.path.join(folder, "amd_blink_two_node_results", fname + f"buff{buff_size}.txt")
             os.system(f"stdbuf --output=L {cmd} 2>&1 | tee {res_file}")
             os.system(rm_cmd)
             os.system("ssh 10.8 " + rm_cmd)
