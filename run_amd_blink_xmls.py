@@ -17,6 +17,8 @@ if __name__ == "__main__":
             assert "allreduce" in fname
             exe = "all_reduce_perf"
 
+            is_half = "half" in fname
+
             start_size = 256
             end_size = "10G" if buff_size >= 2 ** 20 else "1G"
 
@@ -25,7 +27,7 @@ if __name__ == "__main__":
             os.system(f"ssh 10.8 cp {xml_file} /home/amdautomation/liangyu/rccl_run_schedule/")
             cmd = (
 f"""mpirun --allow-run-as-root \
--map-by ppr:16:node \
+-hostfile ~/hostfile -map-by ppr:{8 if is_half else 16}:node \
 --bind-to numa -mca pml ob1 -mca btl ^openib -mca btl_tcp_if_include eth0 \
 -x PATH -x LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH -x NCCL_SOCKET_IFNAME=eth0 \
 -x LD_PRELOAD=/home/amdautomation/liangyu/rccl/build/librccl.so:$LD_PRELOAD \
