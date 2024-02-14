@@ -376,7 +376,7 @@ MSCCLPP_DEVICE_INLINE void
       if (sm_block_cnt > 1) sm_syncer->sync(sm_block_cnt);
       recv_sm_channel->get(d_start * sizeof(int), s_start * sizeof(int), nElem * sizeof(int), tid, sm_block_cnt * blockDim.x);
       sm_syncer->sync(sm_block_cnt);
-      __threadfence();
+      if (tid == 0) __threadfence();
 
       if (tid == 0) preceived = atomicInc((unsigned int*) pending_receives, 0xffffffff) + 1;
     }
