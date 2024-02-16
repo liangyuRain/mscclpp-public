@@ -152,11 +152,13 @@ def run_expt(group: mscclpp_comm.CommGroup, func,
 
 
 def run_allgather(group: mscclpp_comm.CommGroup, connections: dict, data_lengths: list,
+                  nblocks: int, nthreads: int,
                   check_iters: int = 10, iters: int = 50):
     data = cp.empty(max(data_lengths), dtype=cp.int32)
     kernel = AllgatherKernel(group, connections, data)
 
     if group.my_rank == 0:
+        print(f"nblocks={nblocks}, nthreads={nthreads}")
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     
     for length in data_lengths:
@@ -168,7 +170,7 @@ def run_allgather(group: mscclpp_comm.CommGroup, connections: dict, data_lengths
         else:
             init_data, correctness_check = None, None
 
-        func = kernel.get_func(group.nranks - 1, 1024, nelem_total=length)
+        func = kernel.get_func(nblocks, nthreads, nelem_total=length)
         run_expt(group=group, func=func, init_data=init_data, data=data,
                  length=length, correctness_check=correctness_check,
                  check_iters=check_iters, iters=iters)
@@ -183,7 +185,8 @@ if __name__ == "__main__":
     
     run_allgather(
         group, connections,
-        data_lengths=[2 ** i // 4 for i in range(10, 28)],
+        nblocks=63, nthreads=128,
+        data_lengths=[2 ** 20 * 4 // 4, 2 ** 20 * 16 // 4],
     )
 
     del group
