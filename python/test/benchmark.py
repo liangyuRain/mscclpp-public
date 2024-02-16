@@ -13,7 +13,7 @@ from mscclpp import (
     Transport,
 )
 import mscclpp.comm as mscclpp_comm
-from mscclpp_mpi import MpiGroup
+from .mscclpp_mpi import MpiGroup
 from mscclpp import ProxyService
 from mscclpp.utils import KernelBuilder
 
@@ -24,7 +24,7 @@ def bench_time(niter: int, func):
     with stream:
         stream.begin_capture()
         for i in range(niter):
-            func(stream.ptr)
+            func(stream)
         graph = stream.end_capture()
 
     # now run a warm up round
@@ -59,7 +59,6 @@ class AllgatherKernel:
         group: mscclpp_comm.CommGroup,
         connections: dict,
         data: cp.ndarray,
-        n_parallel_sm_blocks: int,
     ):
         self.nranks = group.nranks
         self.data = data
@@ -74,7 +73,7 @@ class AllgatherKernel:
         ).get_compiled_kernel()
 
         channels = group.make_sm_channels(data, connections)
-        handles = [channels[rank].device_haneld().raw for rank in range(self.nranks) if rank != group.my_rank]
+        handles = [channels[rank].device_handle().raw for rank in range(self.nranks) if rank != group.my_rank]
         handles_mem = cp.asarray(memoryview(b"".join(handles)), dtype=cp.uint8)
 
         syncer_arr = cp.zeros((self.nranks - 1) * 12, dtype=cp.bool_)
@@ -84,7 +83,6 @@ class AllgatherKernel:
 
         self.params = b""
         self.params += struct.pack("P", handles_mem.data.ptr) + struct.pack("P", syncer_arr.data.ptr)
-        self.params += struct.pack("i", n_parallel_sm_blocks)
 
         self._temp = [
             channels, handles, handles_mem, syncer_arr
@@ -93,7 +91,7 @@ class AllgatherKernel:
         self._params = {}
 
 
-    def prepare_params(self, nelem_total):
+    def prepare_params(self, n_parallel_sm_blocks, nelem_total):
         if nelem_total in self._data_starts_nelem_totals:
             offsets, nelem_per_channel = self._data_starts_nelem_totals[nelem_total]
         else:
@@ -102,7 +100,7 @@ class AllgatherKernel:
             offsets = cp.array([rank * nelem_per_channel for rank in range(self.nranks) if rank != group.my_rank], dtype=cp.uint64)
             self._data_starts_nelem_totals[nelem_total] = (offsets, nelem_per_channel)
 
-        params = self.params + struct.pack("P", offsets.data.ptr) + struct.pack("Q", nelem_per_channel)
+        params = self.params + struct.pack("Q", n_parallel_sm_blocks) + struct.pack("P", offsets.data.ptr) + struct.pack("Q", nelem_per_channel)
         self._params[uuid.uuid1()] = params
 
         return params
@@ -111,7 +109,10 @@ class AllgatherKernel:
     def get_func(self, nblocks, nthreads, nelem_total=None):
         if nelem_total is None:
             nelem_total = self.data.shape[0]
-        params = self.prepare_params(nelem_total)
+        assert nblocks % (self.nranks - 1) == 0
+        n_parallel_sm_blocks = nblocks // (self.nranks - 1)
+        params = self.prepare_params(n_parallel_sm_blocks, nelem_total)
+        assert nblocks == (self.nranks - 1) * n_parallel_sm_blocks
         return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, nblocks, nthreads, 0, stream_ptr)
 
 
@@ -119,8 +120,58 @@ class AllgatherKernel:
         return self.get_func(nblocks, nthreads, nelem_total)(stream_ptr)
 
 
-def run_allgather(group: mscclpp_comm.CommGroup, connections: dict, data_size: int):
-    pass
+def print_row(*args):
+    print("".join(f"{arg:>20}" for arg in args), flush=True)
+
+
+def run_expt(group: mscclpp_comm.CommGroup, func,
+             init_data: cp.array, data: cp.array,
+             length: int, correctness_check,
+             check_iters: int, iters: int):
+    group.barrier()
+    for _ in range(check_iters):
+        cp.copyto(data[:length], init_data)
+        func()
+        cp.cuda.runtime.deviceSynchronize()
+        assert correctness_check()
+
+    cp.cuda.runtime.deviceSynchronize()
+    group.barrier()
+    res = bench_time(iters, func) / 1e3
+    avg_time = res  # seconds
+    min_time = res
+
+    size = length * 4
+    if group.my_rank == 0:
+        print_row(size,
+                  f"{avg_time * 1e6:.2f}",
+                  f"{min_time * 1e6:.2f}",
+                  f"{(size / 1e9) / avg_time:.2f}",
+                  f"{(size / 1e9) / min_time:.2f}")
+    group.barrier()
+
+
+def run_allgather(group: mscclpp_comm.CommGroup, connections: dict, data_lengths: list,
+                  check_iters: int = 10, iters: int = 50):
+    data = cp.empty(max(data_lengths), dtype=cp.int32)
+    kernel = AllgatherKernel(group, connections, data)
+
+    if group.my_rank == 0:
+        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
+    
+    for length in data_lengths:
+        if check_iters > 0:
+            init_data = cp.array([group.my_rank + 1] * length, dtype=cp.int32)
+            expected = cp.array([off // (length // group.nranks) + 1
+                                for off in range(length)], dtype=cp.int32)
+            correctness_check = lambda: cp.array_equal(data[:length], expected)
+        else:
+            init_data, correctness_check = None, None
+
+        func = kernel.get_func(group.nranks - 1, 1024, nelem_total=length)
+        run_expt(group=group, func=func, init_data=init_data, data=data,
+                 length=length, correctness_check=correctness_check,
+                 check_iters=check_iters, iters=iters)
 
 
 if __name__ == "__main__":
@@ -130,5 +181,9 @@ if __name__ == "__main__":
     connections = connect_nvlink(group, [v for v in range(group.nranks) 
                                          if v != group.my_rank])
     
+    run_allgather(
+        group, connections,
+        data_lengths=[2 ** i // 4 for i in range(10, 28)],
+    )
 
-
+    del group
