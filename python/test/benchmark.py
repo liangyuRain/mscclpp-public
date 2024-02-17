@@ -120,6 +120,78 @@ class AllgatherKernel:
         return self.get_func(nblocks, nthreads, nelem_total)(stream_ptr)
 
 
+class AllgatherKernelLL:
+    def __init__(
+        self,
+        group: mscclpp_comm.CommGroup,
+        connections: dict,
+        data: cp.ndarray,
+    ):
+        self.my_rank = group.my_rank
+        self.nranks = group.nranks
+        self.data = data
+
+        self.kernel_file = "allgather_kernel_packet.cu"
+        self.kernel_name = "allgather_kernel"
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        self._kernel = KernelBuilder(
+            file=self.kernel_file,
+            kernel_name=self.kernel_name,
+            file_dir=file_dir,
+        ).get_compiled_kernel()
+        
+        scratch = cp.zeros(data.shape[0] * 2, dtype=cp.int32)
+        channels = group.make_sm_channels_with_scratch(data, scratch, connections)
+        handles = [channels[rank].device_handle().raw for rank in range(self.nranks) if rank != group.my_rank]
+        handles_mem = cp.asarray(memoryview(b"".join(handles)), dtype=cp.uint8)
+
+        syncer_arr = cp.zeros((self.nranks - 1) * 12, dtype=cp.bool_)
+
+        assert len(handles) == self.nranks - 1
+        assert syncer_arr.shape[0] == (self.nranks - 1) * 12
+
+        self.params = b""
+        self.params += struct.pack("P", handles_mem.data.ptr) + struct.pack("P", syncer_arr.data.ptr)
+
+        self._temp = [
+            channels, handles, handles_mem, syncer_arr, scratch
+        ]
+        self._data_starts_nelem_totals = {}
+        self._params = {}
+
+
+    def prepare_params(self, n_parallel_sm_blocks, nelem_total):
+        if nelem_total in self._data_starts_nelem_totals:
+            offsets, local_offset, nelem_per_channel = self._data_starts_nelem_totals[nelem_total]
+        else:
+            assert nelem_total % self.nranks == 0
+            nelem_per_channel = nelem_total // self.nranks
+            offsets = cp.array([rank * nelem_per_channel for rank in range(self.nranks) if rank != self.my_rank], dtype=cp.uint64)
+            local_offset = self.my_rank * nelem_per_channel
+            self._data_starts_nelem_totals[nelem_total] = (offsets, local_offset, nelem_per_channel)
+
+        params = self.params + struct.pack("Q", n_parallel_sm_blocks)
+        params += struct.pack("P", offsets.data.ptr) + struct.pack("Q", local_offset)
+        params += struct.pack("Q", nelem_per_channel) + struct.pack("Q", nelem_total)
+        self._params[uuid.uuid1()] = params
+
+        return params
+
+
+    def get_func(self, nblocks, nthreads, nelem_total=None):
+        if nelem_total is None:
+            nelem_total = self.data.shape[0]
+        assert nblocks % (self.nranks - 1) == 0
+        n_parallel_sm_blocks = nblocks // (self.nranks - 1)
+        params = self.prepare_params(n_parallel_sm_blocks, nelem_total)
+        assert nblocks == (self.nranks - 1) * n_parallel_sm_blocks
+        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, nblocks, nthreads, 0, stream_ptr)
+
+
+    def __call__(self, nblocks, nthreads, nelem_total=None, stream_ptr=None):
+        return self.get_func(nblocks, nthreads, nelem_total)(stream_ptr)
+
+
 def print_row(*args):
     print("".join(f"{arg:>20}" for arg in args), flush=True)
 
@@ -187,6 +259,7 @@ if __name__ == "__main__":
         group, connections,
         nblocks=63, nthreads=128,
         data_lengths=[2 ** 20 * 4 // 4, 2 ** 20 * 16 // 4],
+        # data_lengths=[2 ** 28, 2 ** 29, 2 ** 30],
     )
 
     del group
