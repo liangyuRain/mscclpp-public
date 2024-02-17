@@ -60,6 +60,7 @@ class AllgatherKernel:
         connections: dict,
         data: cp.ndarray,
     ):
+        self.my_rank = group.my_rank
         self.nranks = group.nranks
         self.data = data
 
@@ -93,14 +94,17 @@ class AllgatherKernel:
 
     def prepare_params(self, n_parallel_sm_blocks, nelem_total):
         if nelem_total in self._data_starts_nelem_totals:
-            offsets, nelem_per_channel = self._data_starts_nelem_totals[nelem_total]
+            local_offset, offsets, nelem_per_channel = self._data_starts_nelem_totals[nelem_total]
         else:
             assert nelem_total % self.nranks == 0
             nelem_per_channel = nelem_total // self.nranks
+            local_offset = self.my_rank * nelem_per_channel
             offsets = cp.array([rank * nelem_per_channel for rank in range(self.nranks) if rank != group.my_rank], dtype=cp.uint64)
-            self._data_starts_nelem_totals[nelem_total] = (offsets, nelem_per_channel)
+            self._data_starts_nelem_totals[nelem_total] = (local_offset, offsets, nelem_per_channel)
 
-        params = self.params + struct.pack("Q", n_parallel_sm_blocks) + struct.pack("P", offsets.data.ptr) + struct.pack("Q", nelem_per_channel)
+        params = self.params + struct.pack("Q", n_parallel_sm_blocks)
+        params += struct.pack("Q", local_offset) + struct.pack("P", offsets.data.ptr)
+        params += struct.pack("Q", nelem_per_channel)
         self._params[uuid.uuid1()] = params
 
         return params
@@ -203,6 +207,7 @@ def run_expt(group: mscclpp_comm.CommGroup, func,
     group.barrier()
     for _ in range(check_iters):
         cp.copyto(data[:length], init_data)
+        group.barrier()
         func()
         cp.cuda.runtime.deviceSynchronize()
         assert correctness_check()
@@ -258,7 +263,7 @@ if __name__ == "__main__":
     run_allgather(
         group, connections,
         nblocks=63, nthreads=128,
-        data_lengths=[2 ** 20 * 4 // 4, 2 ** 20 * 16 // 4],
+        data_lengths=[2 ** 20 * 4 // 4, 2 ** 20 * 12 // 4, 2 ** 20 * 16 // 4],
         # data_lengths=[2 ** 28, 2 ** 29, 2 ** 30],
     )
 
