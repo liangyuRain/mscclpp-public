@@ -23,8 +23,12 @@ extern "C" __global__ void __launch_bounds__(1024)
     //     sm_channels[peer].wait();
     // }
 
+    // syncers[peer].sync(n_parallel_sm_blocks);
+
     sm_channels[peer].put(local_offset * sizeof(int), nelem_per_channel * sizeof(int),
                           tid + peer_block_idx * blockDim.x, n_parallel_sm_blocks * blockDim.x);
+    
+    syncers[peer].sync(n_parallel_sm_blocks);
 
     if (peer_block_idx == 0 && tid == 0) {
         sm_channels[peer].signal();
