@@ -325,6 +325,108 @@ class ReduceScatterKernel:
         return self.get_func(nblocks, nthreads, nelem_total)(stream_ptr)
 
 
+class ReduceScatterWithScratchKernel:
+    def __init__(
+        self,
+        group: mscclpp_comm.CommGroup,
+        connections: dict,
+        data: cp.ndarray,
+        proxy_service: ProxyService,
+    ):
+        self.my_rank = group.my_rank
+        self.nranks = group.nranks
+        self.data = data
+
+        self.kernel_file = "reduceScatter_kernel_scratch.cu"
+        self.kernel_name = "reduceScatter_kernel"
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        self._kernel = KernelBuilder(
+            file=self.kernel_file,
+            kernel_name=self.kernel_name,
+            file_dir=file_dir,
+        ).get_compiled_kernel()
+
+        scratches = [cp.zeros(data.shape[0] // self.nranks, dtype=cp.float16) for _ in range(self.nranks - 1)]
+        send_sm_channels, recv_sm_channels = [], []
+        send_proxy_channels, recv_proxy_channels = [], []
+        for rank in range(self.nranks):
+            if rank == self.my_rank:
+                continue
+            elif rank < self.my_rank:
+                recv_sm_channels.append(group.make_sm_channel(scratches[len(recv_sm_channels)], connections[rank], rank))
+                send_sm_channels.append(group.make_sm_channel(data, connections[rank], rank))
+                recv_proxy_channels.append(group.make_proxy_channel(proxy_service, scratches[len(recv_proxy_channels)], connections[rank], rank))
+                send_proxy_channels.append(group.make_proxy_channel(proxy_service, data, connections[rank], rank))
+            else:
+                send_sm_channels.append(group.make_sm_channel(data, connections[rank], rank))
+                recv_sm_channels.append(group.make_sm_channel(scratches[len(recv_sm_channels)], connections[rank], rank))
+                send_proxy_channels.append(group.make_proxy_channel(proxy_service, data, connections[rank], rank))
+                recv_proxy_channels.append(group.make_proxy_channel(proxy_service, scratches[len(recv_proxy_channels)], connections[rank], rank))
+        
+        send_sm_handles = [channel.device_handle().raw for channel in send_sm_channels]
+        recv_sm_handles = [channel.device_handle().raw for channel in recv_sm_channels]
+        send_proxy_handles = [channel.device_handle().raw for channel in send_proxy_channels]
+        recv_proxy_handles = [channel.device_handle().raw for channel in recv_proxy_channels]
+
+        send_sm_handles_mem = cp.asarray(memoryview(b"".join(send_sm_handles)), dtype=cp.uint8)
+        recv_sm_handles_mem = cp.asarray(memoryview(b"".join(recv_sm_handles)), dtype=cp.uint8)
+        send_proxy_handles_mem = cp.asarray(memoryview(b"".join(send_proxy_handles)), dtype=cp.uint8)
+        recv_proxy_handles_mem = cp.asarray(memoryview(b"".join(recv_proxy_handles)), dtype=cp.uint8)
+
+        assert len(send_sm_handles) == self.nranks - 1
+        assert len(recv_sm_handles) == self.nranks - 1
+        assert len(send_proxy_handles) == self.nranks - 1
+        assert len(recv_proxy_handles) == self.nranks - 1
+
+        syncer_arr = cp.zeros((self.nranks - 1) * 12, dtype=cp.bool_)
+        scratches_ptr_arr = [struct.pack("P", buff.data.ptr) for buff in scratches]
+        scratches_ptr_arr_mem = cp.asarray(memoryview(b"".join(scratches_ptr_arr)), dtype=cp.uint8)
+
+        self.params = b""
+        self.params += struct.pack("P", send_sm_handles_mem.data.ptr) + struct.pack("P", recv_sm_handles_mem.data.ptr)
+        self.params += struct.pack("P", send_proxy_handles_mem.data.ptr) + struct.pack("P", recv_proxy_handles_mem.data.ptr)
+        self.params += struct.pack("Q", self.my_rank) + struct.pack("Q", self.nranks) + struct.pack("P", syncer_arr.data.ptr)
+        self.params += struct.pack("P", data.data.ptr) + struct.pack("P", scratches_ptr_arr_mem.data.ptr)
+
+        self._temp = [
+            send_sm_channels, recv_sm_channels, send_proxy_channels, recv_proxy_channels,
+            send_sm_handles, recv_sm_handles, send_proxy_handles, recv_proxy_handles,
+            send_sm_handles_mem, recv_sm_handles_mem, send_proxy_handles_mem, recv_proxy_handles_mem,
+            syncer_arr, scratches, scratches_ptr_arr, scratches_ptr_arr_mem
+        ]
+        self._data_starts_nelem_totals = {}
+        self._params = {}
+
+
+    def prepare_params(self, n_parallel_sm_blocks, nelem_total, is_async):
+        if nelem_total in self._data_starts_nelem_totals:
+            nelem_per_channel = self._data_starts_nelem_totals[nelem_total]
+        else:
+            assert nelem_total % self.nranks == 0
+            nelem_per_channel = nelem_total // self.nranks
+            self._data_starts_nelem_totals[nelem_total] = nelem_per_channel
+
+        params = self.params + struct.pack("Q", n_parallel_sm_blocks)
+        params += struct.pack("Q", nelem_per_channel) + struct.pack("Q", 1 if is_async else 0)
+        self._params[uuid.uuid1()] = params
+
+        return params
+
+
+    def get_func(self, nblocks, nthreads, nelem_total=None, is_async=False):
+        if nelem_total is None:
+            nelem_total = self.data.shape[0]
+        if not is_async:
+            assert nblocks % (self.nranks - 1) == 0
+        n_parallel_sm_blocks = nblocks // (self.nranks - 1)
+        params = self.prepare_params(n_parallel_sm_blocks, nelem_total, is_async)
+        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, nblocks, nthreads, 0, stream_ptr)
+
+
+    def __call__(self, nblocks, nthreads, nelem_total=None, is_async=False, stream_ptr=None):
+        return self.get_func(nblocks, nthreads, nelem_total, is_async)(stream_ptr)
+
+
 def print_row(*args):
     print("".join(f"{arg:>20}" for arg in args), flush=True)
 
