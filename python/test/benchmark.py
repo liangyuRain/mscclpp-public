@@ -249,10 +249,76 @@ class AllgatherKernelLL:
     def get_func(self, nblocks, nthreads, nelem_total=None):
         if nelem_total is None:
             nelem_total = self.data.shape[0]
-        assert nblocks % (self.nranks - 1) == 0
-        n_parallel_sm_blocks = nblocks // (self.nranks - 1)
+        assert nblocks % 2 == 0
+        assert (nblocks // 2) % (self.nranks - 1) == 0
+        n_parallel_sm_blocks = nblocks // 2 // (self.nranks - 1)
         params = self.prepare_params(n_parallel_sm_blocks, nelem_total)
-        assert nblocks == (self.nranks - 1) * n_parallel_sm_blocks
+        assert nblocks == (self.nranks - 1) * n_parallel_sm_blocks * 2
+        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, nblocks, nthreads, 0, stream_ptr)
+
+
+    def __call__(self, nblocks, nthreads, nelem_total=None, stream_ptr=None):
+        return self.get_func(nblocks, nthreads, nelem_total)(stream_ptr)
+
+
+class ReduceScatterKernel:
+    def __init__(
+        self,
+        group: mscclpp_comm.CommGroup,
+        connections: dict,
+        data: cp.ndarray,
+    ):
+        self.my_rank = group.my_rank
+        self.nranks = group.nranks
+        self.data = data
+
+        self.kernel_file = "reduceScatter_kernel.cu"
+        self.kernel_name = "reduceScatter_kernel"
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        self._kernel = KernelBuilder(
+            file=self.kernel_file,
+            kernel_name=self.kernel_name,
+            file_dir=file_dir,
+        ).get_compiled_kernel()
+
+        channels = group.make_sm_channels(data, connections)
+        handles = [channels[rank].device_handle().raw for rank in range(self.nranks) if rank != self.my_rank]
+        handles_mem = cp.asarray(memoryview(b"".join(handles)), dtype=cp.uint8)
+
+        assert len(handles) == self.nranks - 1
+
+        self.params = b""
+        self.params += struct.pack("P", handles_mem.data.ptr)
+        self.params += struct.pack("Q", self.my_rank) + struct.pack("Q", self.nranks)
+        self.params += struct.pack("P", data.data.ptr)
+
+        self._temp = [
+            channels, handles, handles_mem
+        ]
+        self._data_starts_nelem_totals = {}
+        self._params = {}
+
+
+    def prepare_params(self, n_parallel_sm_blocks, nelem_total):
+        if nelem_total in self._data_starts_nelem_totals:
+            nelem_per_channel = self._data_starts_nelem_totals[nelem_total]
+        else:
+            assert nelem_total % self.nranks == 0
+            nelem_per_channel = nelem_total // self.nranks
+            self._data_starts_nelem_totals[nelem_total] = nelem_per_channel
+
+        params = self.params + struct.pack("Q", nelem_per_channel)
+        self._params[uuid.uuid1()] = params
+
+        return params
+
+
+    def get_func(self, nblocks, nthreads, nelem_total=None):
+        if nelem_total is None:
+            nelem_total = self.data.shape[0]
+        assert nblocks % (self.nranks - 1) == 0
+        n_parallel_sm_blocks = nblocks
+        params = self.prepare_params(n_parallel_sm_blocks, nelem_total)
         return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, nblocks, nthreads, 0, stream_ptr)
 
 
@@ -274,7 +340,7 @@ def run_expt(group: mscclpp_comm.CommGroup, func,
         group.barrier()
         func()
         cp.cuda.runtime.deviceSynchronize()
-        assert correctness_check()
+        assert correctness_check(), data
 
     cp.cuda.runtime.deviceSynchronize()
     group.barrier()
@@ -282,7 +348,7 @@ def run_expt(group: mscclpp_comm.CommGroup, func,
     avg_time = res  # seconds
     min_time = res
 
-    size = length * 4
+    size = length * data.dtype.itemsize
     if group.my_rank == 0:
         print_row(size,
                   f"{avg_time * 1e6:.2f}",
@@ -302,6 +368,7 @@ def run_allgather(group: mscclpp_comm.CommGroup, connections: dict, data_lengths
     # kernel = AllgatherKernelAsync(group, connections, data, proxy_service)
 
     if group.my_rank == 0:
+        print(f"Allgather")
         print(f"nblocks={nblocks}, nthreads={nthreads}")
         print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
     
@@ -313,6 +380,41 @@ def run_allgather(group: mscclpp_comm.CommGroup, connections: dict, data_lengths
             expected = cp.array([off // (length // group.nranks) + 1
                                 for off in range(length)], dtype=cp.int32)
             correctness_check = lambda: cp.array_equal(data[:length], expected)
+        else:
+            init_data, correctness_check = None, None
+
+        func = kernel.get_func(nblocks, nthreads, nelem_total=length)
+        run_expt(group=group, func=func, init_data=init_data, data=data,
+                 length=length, correctness_check=correctness_check,
+                 check_iters=check_iters, iters=iters)
+    
+    # proxy_service.stop_proxy()
+
+
+def run_reduceScatter(group: mscclpp_comm.CommGroup, connections: dict, data_lengths: list,
+                      nblocks: int, nthreads: int,
+                      check_iters: int = 10, iters: int = 50):
+    # proxy_service = ProxyService()
+
+    data = cp.empty(max(data_lengths), dtype=cp.float16)
+    kernel = ReduceScatterKernel(group, connections, data)
+
+    if group.my_rank == 0:
+        print(f"ReduceScatter")
+        print(f"nblocks={nblocks}, nthreads={nthreads}")
+        print_row("size(B)", "avg_time(us)", "min_time(us)", "avg_algbw(GB/s)", "max_algbw(GB/s)")
+    
+    # proxy_service.start_proxy()
+
+    for length in data_lengths:
+        shard_size = length // group.nranks
+        shard_begin = shard_size * group.my_rank
+        shard_end = shard_begin + shard_size
+
+        if check_iters > 0:
+            init_data = cp.array([group.my_rank + 1] * length, dtype=cp.float16)
+            expected = cp.array([sum(n + 1 for n in range(group.nranks))] * shard_size, dtype=cp.float16)
+            correctness_check = lambda: cp.array_equal(data[shard_begin: shard_end], expected)
         else:
             init_data, correctness_check = None, None
 
