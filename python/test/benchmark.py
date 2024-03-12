@@ -316,7 +316,6 @@ class ReduceScatterKernel:
     def get_func(self, nblocks, nthreads, nelem_total=None):
         if nelem_total is None:
             nelem_total = self.data.shape[0]
-        assert nblocks % (self.nranks - 1) == 0
         n_parallel_sm_blocks = nblocks
         params = self.prepare_params(n_parallel_sm_blocks, nelem_total)
         return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, nblocks, nthreads, 0, stream_ptr)
