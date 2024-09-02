@@ -1,0 +1,73 @@
+(base) root@costsim-dev-000001:~/Training# mpirun \
+> --mca btl_tcp_if_include eth0 \
+> --mca pml ob1 -mca btl ^openib \
+> --allow-run-as-root \
+> -np 16 -npernode 8 \
+> -H 10.0.0.5:8,10.0.0.6:8 \
+> -x CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+> -x LD_LIBRARY_PATH=/root/msccl/executor/msccl-executor-nccl/build/lib:$LD_LIBRARY_PATH \
+> -x NCCL_IB_PCI_RELAXED_ORDERING=1 \
+> -x NCCL_SOCKET_IFNAME=eth0 \
+> -x CUDA_DEVICE_ORDER=PCI_BUS_ID \
+> -x NCCL_NET_GDR_LEVEL=5 \
+> -x NCCL_DEBUG=WARN \
+> -x NCCL_DEBUG_SUBSYS=INIT \
+> -x NCCL_PXN_DISABLE=1 \
+> -x NCCL_TOPO_FILE=/root/topo.xml \
+> -x NCCL_MIN_NCHANNELS=32 \
+> -x NCCL_ALGO=Ring,MSCCL \
+> -x NCCL_PROTO=Simple \
+> /root/msccl/tests/msccl-tests-nccl/build/all_gather_perf -b 256 -e 10G -f 2 -g 1 -z 0 -n 100 -w 10 -c 1 -a 2
+# nThread 1 nGpus 1 minBytes 256 maxBytes 10737418240 step: 2(factor) warmup iters: 10 iters: 100 agg iters: 1 validation: 1 graph: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid 238446 on costsim-dev-000001 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  1 Group  0 Pid 238447 on costsim-dev-000001 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  2 Group  0 Pid 238448 on costsim-dev-000001 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  3 Group  0 Pid 238449 on costsim-dev-000001 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  4 Group  0 Pid 238450 on costsim-dev-000001 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  5 Group  0 Pid 238451 on costsim-dev-000001 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  6 Group  0 Pid 238452 on costsim-dev-000001 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  7 Group  0 Pid 238454 on costsim-dev-000001 device  7 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  8 Group  0 Pid 100415 on costsim-dev-000002 device  0 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank  9 Group  0 Pid 100416 on costsim-dev-000002 device  1 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 10 Group  0 Pid 100417 on costsim-dev-000002 device  2 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 11 Group  0 Pid 100418 on costsim-dev-000002 device  3 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 12 Group  0 Pid 100419 on costsim-dev-000002 device  4 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 13 Group  0 Pid 100420 on costsim-dev-000002 device  5 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 14 Group  0 Pid 100421 on costsim-dev-000002 device  6 [0x00] NVIDIA A100-SXM4-80GB
+#  Rank 15 Group  0 Pid 100423 on costsim-dev-000002 device  7 [0x00] NVIDIA A100-SXM4-80GB
+NCCL version 2.19.4+cuda12.2
+#
+#                                                              out-of-place                       in-place          
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)       
+         256             4     float    none      -1    163.6    0.00    0.00      0    162.3    0.00    0.00      0
+         512             8     float    none      -1    162.9    0.00    0.00      0    163.0    0.00    0.00      0
+        1024            16     float    none      -1    163.3    0.01    0.01      0    163.2    0.01    0.01      0
+        2048            32     float    none      -1    163.5    0.01    0.01      0    163.3    0.01    0.01      0
+        4096            64     float    none      -1    163.8    0.02    0.02      0    163.4    0.03    0.02      0
+        8192           128     float    none      -1    164.7    0.05    0.05      0    164.1    0.05    0.05      0
+       16384           256     float    none      -1    167.6    0.10    0.09      0    167.0    0.10    0.09      0
+       32768           512     float    none      -1    175.2    0.19    0.18      0    403.0    0.08    0.08      0
+       65536          1024     float    none      -1    183.2    0.36    0.34      0    412.5    0.16    0.15      0
+      131072          2048     float    none      -1    194.0    0.68    0.63      0    403.9    0.32    0.30      0
+      262144          4096     float    none      -1    198.1    1.32    1.24      0    402.6    0.65    0.61      0
+      524288          8192     float    none      -1    224.8    2.33    2.19      0    418.8    1.25    1.17      0
+     1048576         16384     float    none      -1    359.9    2.91    2.73      0    431.6    2.43    2.28      0
+     2097152         32768     float    none      -1    413.9    5.07    4.75      0    402.1    5.22    4.89      0
+     4194304         65536     float    none      -1    413.3   10.15    9.51      0    402.8   10.41    9.76      0
+     8388608        131072     float    none      -1    420.6   19.94   18.70      0    407.7   20.58   19.29      0
+    16777216        262144     float    none      -1    432.2   38.82   36.40      0    416.7   40.26   37.75      0
+    33554432        524288     float    none      -1    597.3   56.17   52.66      0    585.0   57.36   53.77      0
+    67108864       1048576     float    none      -1    634.1  105.83   99.21      0    617.1  108.75  101.96      0
+   134217728       2097152     float    none      -1    891.3  150.59  141.18      0    866.1  154.97  145.29      0
+   268435456       4194304     float    none      -1   1563.0  171.74  161.00      0   1542.5  174.02  163.15      0
+   536870912       8388608     float    none      -1   2960.7  181.33  170.00      0   2960.7  181.33  170.00      0
+  1073741824      16777216     float    none      -1   5842.6  183.78  172.29      0   5816.3  184.61  173.07      0
+  2147483648      33554432     float    none      -1    11450  187.55  175.83      0    11367  188.92  177.11      0
+  4294967296      67108864     float    none      -1    22736  188.91  177.10      0    22537  190.57  178.66      0
+  8589934592     134217728     float    none      -1    45209  190.00  178.13      0    45156  190.23  178.34      0
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 54.2703 
+#
