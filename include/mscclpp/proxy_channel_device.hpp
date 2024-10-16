@@ -114,6 +114,11 @@ struct ProxyChannelDeviceHandle {
 
   /// Push a @ref TriggerFlag to the FIFO.
   MSCCLPP_DEVICE_INLINE void signal() { fifo_.push(ChannelTrigger(TriggerFlag, 0, 0, 0, 0, 1, semaphoreId_).value); }
+  
+  MSCCLPP_DEVICE_INLINE void signal(const uint64_t count) {
+    for (uint64_t i = 0; i < count; ++i)
+      fifo_.push(ChannelTrigger(TriggerFlag, 0, 0, 0, 0, 1, semaphoreId_).value); 
+  }
 
   /// Push a @ref TriggerData and a @ref TriggerFlag at the same time to the FIFO.
   /// @param dst The destination memory region.
@@ -166,7 +171,7 @@ struct ProxyChannelDeviceHandle {
 
   /// Check if the proxy channel has been signaled.
   /// @return true if the proxy channel has been signaled.
-  MSCCLPP_DEVICE_INLINE bool poll() { return semaphore_.poll(); }
+  MSCCLPP_DEVICE_INLINE uint64_t poll(const int64_t max_poll = 1) { return semaphore_.poll(max_poll); }
 
   /// Wait for the proxy channel to be signaled.
   /// @param maxSpinCount The maximum number of spin counts before asserting. Never assert if negative.
@@ -195,7 +200,7 @@ struct SimpleProxyChannelDeviceHandle {
   MSCCLPP_DEVICE_INLINE void put(uint64_t offset, uint64_t size) { put(offset, offset, size); }
 
   /// Push a @ref TriggerFlag to the FIFO.
-  MSCCLPP_DEVICE_INLINE void signal() { proxyChan_.signal(); }
+  MSCCLPP_DEVICE_INLINE void signal(const uint64_t count = 1) { proxyChan_.signal(count); }
 
   /// Push a @ref TriggerData and a @ref TriggerFlag at the same time to the FIFO.
   /// @param dstOffset The offset into the destination memory region.
@@ -230,7 +235,7 @@ struct SimpleProxyChannelDeviceHandle {
 
   /// Check if the proxy channel has been signaled.
   /// @return true if the proxy channel has been signaled.
-  MSCCLPP_DEVICE_INLINE bool poll() { return proxyChan_.poll(); }
+  MSCCLPP_DEVICE_INLINE uint64_t poll(const int64_t max_poll = 1) { return proxyChan_.poll(max_poll); }
 
   /// Wait for the proxy channel to be signaled.
   /// @param maxSpinCount The maximum number of spin counts before asserting. Never assert if negative.
