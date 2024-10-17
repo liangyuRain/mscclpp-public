@@ -26,7 +26,7 @@ def bench_time(niter: int, func):
     with stream:
         stream.begin_capture()
         for i in range(niter):
-            func(stream.ptr)
+            func(stream)
         graph = stream.end_capture()
 
     # now run a warm up round
@@ -214,9 +214,9 @@ def run_fusion_allreduce(reduce_scatter_Ts: dict, reduce_scatter_Cs: dict, reduc
             RS_func = RS_kernel.get_func(nelem_total=length, nelem_per_send=rs_nelem_per_send)
             AG_func = AG_kernel.get_func(nelem_total=length, nelem_per_send=ag_nelem_per_send)
 
-            def func(stream_ptr=None):
-                RS_func(stream_ptr)
-                AG_func(stream_ptr)
+            def func(stream=None):
+                RS_func(stream)
+                AG_func(stream)
 
             run_expt(group=group, func=func, init_data=init_data, data=data,
                     length=length, nelem_per_send=(rs_nelem_per_send, ag_nelem_per_send),

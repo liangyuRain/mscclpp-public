@@ -256,11 +256,11 @@ class PipelineKernel:
         if nelem_total is None:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None):
-        return self.get_func(nelem_total, nelem_per_send)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None):
+        return self.get_func(nelem_total, nelem_per_send)(stream)
 
 
 class AllgatherParallelSMPipelineKernel:
@@ -472,11 +472,11 @@ class AllgatherParallelSMPipelineKernel:
         if nelem_total is None:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None):
-        return self.get_func(nelem_total, nelem_per_send)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None):
+        return self.get_func(nelem_total, nelem_per_send)(stream)
 
 
 class ReduceScatterPipelineKernel:
@@ -724,11 +724,11 @@ class ReduceScatterPipelineKernel:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
         params += struct.pack("Q", debug_flag) if debug_flag is not None else struct.pack("Q", 0)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None, debug_flag=None):
-        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None, debug_flag=None):
+        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream)
 
 
 class ReduceScatterParallelSMPipelineKernel:
@@ -1033,11 +1033,11 @@ class ReduceScatterParallelSMPipelineKernel:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
         params += struct.pack("Q", debug_flag) if debug_flag is not None else struct.pack("Q", 0)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None, debug_flag=None):
-        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None, debug_flag=None):
+        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream)
 
 
 class ReduceScatterParallelSMCollREPipelineKernel:
@@ -1398,11 +1398,11 @@ class ReduceScatterParallelSMCollREPipelineKernel:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
         params += struct.pack("Q", debug_flag) if debug_flag is not None else struct.pack("Q", 0)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None, debug_flag=None):
-        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None, debug_flag=None):
+        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream)
 
 
 class ReduceScatterParallelSMHackPipelineKernel:
@@ -1634,11 +1634,11 @@ class ReduceScatterParallelSMHackPipelineKernel:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
         params += struct.pack("Q", debug_flag) if debug_flag is not None else struct.pack("Q", 0)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None, debug_flag=None):
-        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None, debug_flag=None):
+        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream)
 
 
 def verify_spanning_tree(G: nx.DiGraph, nranks: int, root: int):
@@ -2040,11 +2040,11 @@ class ReduceScatterParallelSMSendTBPipelineKernel:
             nelem_total = self.data.shape[0]
         params = self.prepare_params(nelem_total, nelem_per_send)
         params += struct.pack("Q", debug_flag) if debug_flag is not None else struct.pack("Q", 0)
-        return lambda stream_ptr=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream_ptr)
+        return lambda stream=None, params=params: self._kernel.launch_kernel(params, self.nblocks, self.nthreads, 0, stream)
 
 
-    def __call__(self, nelem_total=None, nelem_per_send=None, stream_ptr=None, debug_flag=None):
-        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream_ptr)
+    def __call__(self, nelem_total=None, nelem_per_send=None, stream=None, debug_flag=None):
+        return self.get_func(nelem_total, nelem_per_send, debug_flag)(stream)
 
 
 IB_TRANSPORTS = {
